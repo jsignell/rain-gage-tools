@@ -1,4 +1,5 @@
 import string
+import posixpath
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,15 +9,49 @@ class RainGage:
     '''
     Base class for RainGage files
     '''
-    def __init__(self, path):
-        self.path = path
-        self.name = path.replace('\\','/').split('/')[-1]
-        self.year = [int(s) for s in self.name.split('_') if s.isdigit()][0]
+    def __init__(self, path='.', year=None, name="Phila_gage_{YEAR}_fill.dat"):
+        '''
+        If you choose to give a year, you still need to give a path to the
+        parent directory and a general name for the files. 
+        '''
+        path = path.replace('\\','/')
+        if year is None:
+            self.name = name
+            self.path = posixpath.join(path, self.name)
+            self.year = [int(s) for s in self.name.split('_') if s.isdigit()][0]
+            self.get_df()
+        elif type(year) is int:
+            self.name = name.format(YEAR=year)
+            self.path = posixpath.join(path, self.name)
+            self.year = year
+            self.get_df()
+        elif type(year) is list or type(year) is tuple:
+            self.get_files(year, name, path)
+            self.year = '{first_year} to {last_year}'.format(first_year=year[0],last_year=year[-1])
+        else:
+            print "Error: incorrect init of RainGage"
+
         self.freq = '15min'
         self.per_hour = 4
-        self.get_df()
         self.get_gage_mean()
         self.reset_thresh()
+
+    def get_files(self, year, name, path):
+        f = [name.format(YEAR=y) for y in year]
+        self.name = f
+        df_list = []
+        for f in self.name:
+            self.path = posixpath.join(path, f)
+            self.get_df()
+            df_list.append(self.df)    
+        self.df = pd.concat(df_list)
+    
+    def show(self):
+        print self.path
+        print self.name
+        print self.year
+        print self.freq
+        print self.per_hour
     
     def get_df(self):
         dates = ['year','month','day','hour','minute']
@@ -49,11 +84,11 @@ class RainGage:
         
         if interval is 'seasonal':
             self.wet.months.mean().plot(kind='bar',legend=None, ax=ax)
-            ax.set_xlabel("Months of "+ str(self.year))
+            ax.set_xlabel("Months of {year}".format(year=self.year))
 
         elif interval is 'diurnal':
             self.wet.hours.mean().plot(kind='bar',legend=None, ax=ax)
-            ax.set_xlabel("Hours of "+ str(self.year))
+            ax.set_xlabel("Hours of {year}".format(year=self.year))
         
         elif interval is 'all' or interval in self.months:
             bar = []
@@ -65,10 +100,10 @@ class RainGage:
             self.wet.hours.months = wet_hours_months
             if interval in self.months:
                 self.wet.hours.months[interval].plot(kind='bar', ax=ax)
-                ax.set_xlabel("Hours of %i-%i"% (interval, self.year))
+                ax.set_xlabel("Hours of {interval}-{year}".format(interval=interval, year=self.year))
             else:
                 self.wet.hours.months.plot(kind='bar', ax=ax)
-                ax.set_xlabel("Hours of %i"% self.year)
+                ax.set_xlabel("Hours of {year}".format(year=self.year))
 
         ax.set_ylabel("Probability of wet 15min")
         if not hasattr(self, 'prob_wet'):
@@ -136,11 +171,23 @@ class RainGage:
             df = [df[1] for df in self.gage_mean.months][interval-self.months[0]]
             df_list = [i[1] for i in df.groupby(df.index.hour)]
             fig = plt.figure(figsize=(16,12))
-            fig.suptitle('%s Rain Rate Distribution (excluding dry %s) %i-%i' %
-                         (time_step, time_step, interval, self.year), fontsize=20)
+            fig.suptitle('{time_step} Rain Rate Distribution (excluding dry {time_step}) {interval}-{year}'.format(
+                         time_step=time_step, interval=interval, year=self.year), fontsize=20)
             
         if interval not in self.months:
-            fig.suptitle('%s Rain Rate Distribution (excluding dry %s) %i' %
-                         (time_step, time_step, self.year), fontsize=20)
+            fig.suptitle('{time_step} Rain Rate Distribution (excluding dry {time_step}) for {year}'.format(
+                         time_step=time_step, year=self.year), fontsize=20)
         self.get_boxplots(df_list, fig, time_step, interval=interval)
         self.get_distribution(time_step, interval)
+    
+    def plot_lots(self):
+        self.get_wet()
+        self.get_prob_wet('seasonal')
+        self.get_prob_wet('diurnal')
+        self.get_prob_wet('all')
+        self.get_quantiles(interval='seasonal')
+        self.get_quantiles(interval='seasonal', time_step='1H')
+        self.get_quantiles(interval='seasonal', time_step='1D')
+        self.get_quantiles(interval='diurnal')
+        self.get_quantiles(interval='diurnal', time_step='1H')
+ 
