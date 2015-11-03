@@ -1,3 +1,4 @@
+from math import cos, pi
 import string
 import posixpath
 import numpy as np
@@ -74,7 +75,9 @@ class RainGage:
         else:
             print "Error: incorrect init of RainGage"
 
+        self.rate = self.df*self.per_hour
         self.reset_thresh()
+        self.get_wet()
 
     def get_files(self, year, name):
         f = [name.format(YEAR=y) for y in year]
@@ -93,11 +96,16 @@ class RainGage:
         print self.freq
         print self.per_hour
     
-    def get_RG_lon_lat(self):
-        RG_lon_lat = pd.read_csv(self.path+"RG_lon_lat.txt", delim_whitespace=True, 
+    def get_RG_lon_lat(self, filename="RG_lon_lat.txt"):
+        RG_lon_lat = pd.read_csv(self.path+filename, delim_whitespace=True, 
                                  header=None, names=['RG', 'lon', 'lat'])
         RG_lon_lat.index.name = 'order_in_file'
         RG_lon_lat['RG'] = 'RG' + RG_lon_lat['RG'].apply(str)
+        RG_lon_lat.index = RG_lon_lat['RG']
+        RG_lon_lat['Y'] = RG_lon_lat['lat']*110.574
+        RG_lon_lat['X'] = RG_lon_lat['lon']*111.320*(RG_lon_lat['lat']*pi/180).apply(cos)
+        RG_lon_lat['X'] = RG_lon_lat['X'] - min(RG_lon_lat['X'])
+        RG_lon_lat['Y'] = RG_lon_lat['Y'] - min(RG_lon_lat['Y'])
         self.RG_lon_lat = RG_lon_lat
     
     def get_df(self): 
@@ -118,7 +126,27 @@ class RainGage:
     def get_wet(self):
         self.wet = self.df >= self.thresh
     
-    def create_title(self, title, interval='seasonal',
+    def get_wettest(self, time_step='15min', path='SVG_data'):
+        df = self.df.resample(time_step, how='sum',label='right').dropna(how='all')
+        
+        if not hasattr(self,'thresh'):
+            self.get_thresh()
+
+        wet = df >= self.thresh
+        df = df.drop(wet[wet.sum(axis=1) != 24].index)
+        wettest = df.sum(axis=1).sort_values()
+
+        list_of_series = []
+        for t in wettest.tail(5).index:
+            list_of_series.append(df.loc[t])
+        
+        if not hasattr(self,'RG_lon_lat'):
+            self.get_RG_lon_lat()
+ 
+        self.wettest = self.RG_lon_lat.join(list_of_series)
+        self.wettest.to_csv(path, index=False)
+        
+    def create_title(self, title, time_step='15min', interval='seasonal',
                      gage=None, month=None, hour=None):
         if gage is not None:
             title = '{g}: '.format(g=gage)+title
@@ -130,13 +158,14 @@ class RainGage:
             title = title + ' for Months of'
         elif interval is 'diurnal':
             title = title + ' for Hours of'
-        full_title = (title +' {year}').format(ts='15min', year=self.year)
+        full_title = (title +' {year}').format(ts=time_step, year=self.year)
         self.title = full_title
         
-    def get_prob_wet(self, interval='seasonal', show_all=False,
+    def get_prob_wet(self, time_step='15min', interval='seasonal', show_all=False,
                      gage=None, month=None, hour=None, look_closer=None, lc=None):
         fig = plt.figure(figsize=(16,6))
         ax = fig.add_subplot(111)
+        self.wet = self.wet.resample(time_step, how='sum',label='right')>=1
 
         if show_all is False:
             self.group = choose_group(self.wet, interval, gage, month, hour)
@@ -171,8 +200,8 @@ class RainGage:
                     else:
                         show_all[sliceit].loc[hour].plot(kind='bar', ax=ax)
 
-        ax.set_ylabel("Probability of wet 15min")
-        self.create_title('Probability of wet 15min', interval, gage, month, hour)
+        ax.set_ylabel("Probability of wet {ts}".format(ts=time_step))
+        self.create_title('Probability of wet {ts}',time_step, interval, gage, month, hour)
         plt.title(self.title)
 
     def get_boxplots(self, time_step='15min', interval='seasonal', 
@@ -187,7 +216,7 @@ class RainGage:
             elif interval is 'diurnal':
                 if name%2 == 1:  # if the hour is odd
                     continue
-            df = df.resample('15min')
+            df = df.resample(time_step)
             df = df[df.T >= self.thresh]  # only keep wet days
             df = df * self.per_hour  # Make it a rain rate
             wet_rates.append(df.values)
@@ -197,23 +226,22 @@ class RainGage:
         plt.yscale('linear')
         plt.ylabel('Rain Rate (mm/hr)')
         title = '{ts} Rain Rate Distribution (excluding dry {ts})'
-        self.create_title(title, interval, gage, month, hour)
+        self.create_title(title, time_step, interval, gage, month, hour)
         plt.title(self.title)
 
     def get_distribution(self, time_step='15min', interval='seasonal', 
                          gage=None, month=None, hour=None, look_closer=None):
         self.group = choose_group(self.df, interval, gage, month, hour)
-        wet_rates = []
         labels = []
         foo = []
         for name, df in self.group:
             if look_closer is not None:
                 if name not in look_closer:
                     continue
-            elif interval is 'diurnal':
-                if name%2 == 1:  # if the hour is odd
+            else:
+                if name%4 != 0:  # if the hour isn't divisible by 4
                     continue
-            df = df.resample('15min')
+            df = df.resample(time_step)
             df = df[df.T >= self.thresh]  # only keep wet days
             df = df * self.per_hour  # Make it a rain rate
             foo.append(df.quantile(np.arange(0,1.001,.001)))
@@ -222,10 +250,16 @@ class RainGage:
         quan.columns = labels
         self.quantiles = quan
         
-        fig = plt.figure(figsize=(len(wet_rates)*4/3,4))
-        ax = fig.add_subplot(111)
-        self.quantiles.plot(logy=True,ax=ax, legend=None)
+        fig = plt.figure(figsize=(16,8))
+        ax = fig.add_subplot(211)
+        self.quantiles.plot(logy=True,ax=ax)
         ax.set_ylabel('Rain Rate (mm/hr)') 
         title = '{ts} Rain Rate Distribution (excluding dry {ts})'
-        self.create_title(title, interval, gage, month, hour)
+        self.create_title(title, time_step, interval, gage, month, hour)
         plt.title(self.title)
+        
+        ax1 = fig.add_subplot(212)
+        self.quantiles.plot(xlim=(0.9,1),ax=ax1, legend=None)
+        ax1.set_ylabel('Rain Rate (mm/hr)') 
+        
+        
