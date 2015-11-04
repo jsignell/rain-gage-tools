@@ -127,7 +127,7 @@ class RainGage:
         self.wet = self.df >= self.thresh
     
     def get_wettest(self, time_step='15min', path='SVG_data'):
-        df = self.df.resample(time_step, how='sum',label='right').dropna(how='all')
+        df = self.df.resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
         
         if not hasattr(self,'thresh'):
             self.get_thresh()
@@ -145,7 +145,26 @@ class RainGage:
  
         self.wettest = self.RG_lon_lat.join(list_of_series)
         self.wettest.to_csv(path, index=False)
-        
+
+    def get_storm(self, storm_day='2013-08-13', time_step='15min', path='SVG_data'):
+        df = self.df.resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
+
+        if not hasattr(self,'thresh'):
+            self.get_thresh()
+
+        wet = df >= self.thresh
+        df = df.drop(wet[wet.sum(axis=1) != 8].index)
+        storm = df[storm_day].transpose()
+
+        if not hasattr(self,'RG_lon_lat'):
+            self.get_RG_lon_lat()
+
+        self.storm = self.RG_lon_lat.join(storm)
+        for col in self.storm:
+            if col not in self.RG_lon_lat.columns:
+                storm[col] = self.storm[col].replace(0, np.nan)
+        storm.to_csv(path, index=False)
+
     def create_title(self, title, time_step='15min', interval='seasonal',
                      gage=None, month=None, hour=None):
         if gage is not None:
@@ -165,7 +184,7 @@ class RainGage:
                      gage=None, month=None, hour=None, look_closer=None, lc=None):
         fig = plt.figure(figsize=(16,6))
         ax = fig.add_subplot(111)
-        self.wet = self.wet.resample(time_step, how='sum',label='right')>=1
+        self.wet = self.wet.resample(time_step, how='sum',label='right', closed='right')>=1
 
         if show_all is False:
             self.group = choose_group(self.wet, interval, gage, month, hour)
@@ -216,7 +235,7 @@ class RainGage:
             elif interval is 'diurnal':
                 if name%2 == 1:  # if the hour is odd
                     continue
-            df = df.resample(time_step)
+            df = df.resample(time_step, how='mean', label='right', closed='right')
             df = df[df.T >= self.thresh]  # only keep wet days
             df = df * self.per_hour  # Make it a rain rate
             wet_rates.append(df.values)
@@ -241,7 +260,7 @@ class RainGage:
             else:
                 if name%4 != 0:  # if the hour isn't divisible by 4
                     continue
-            df = df.resample(time_step)
+            df = df.resample(time_step, how='mean',label='right',closed='right')
             df = df[df.T >= self.thresh]  # only keep wet days
             df = df * self.per_hour  # Make it a rain rate
             foo.append(df.quantile(np.arange(0,1.001,.001)))
