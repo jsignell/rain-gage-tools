@@ -147,22 +147,23 @@ class RainGage:
         self.wettest.to_csv(path, index=False)
 
     def get_storm(self, storm_day='2013-08-13', time_step='15min', path='SVG_data'):
-        df = self.df.resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
+        df = self.df[storm_day].resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
 
         if not hasattr(self,'thresh'):
             self.get_thresh()
 
         wet = df >= self.thresh
-        df = df.drop(wet[wet.sum(axis=1) != 8].index)
-        storm = df[storm_day].transpose()
+        df = df.drop(wet[wet.sum(axis=1) <= 8].index)
+        storm = df.transpose()
 
         if not hasattr(self,'RG_lon_lat'):
             self.get_RG_lon_lat()
 
-        self.storm = self.RG_lon_lat.join(storm)
-        for col in self.storm:
+        storm = self.RG_lon_lat.join(storm)
+        self.storm = storm
+        for col in storm:
             if col not in self.RG_lon_lat.columns:
-                storm[col] = self.storm[col].replace(0, np.nan)
+                storm[col] = storm[col].replace(0, np.nan)
         storm.to_csv(path, index=False)
 
     def create_title(self, title, time_step='15min', interval='seasonal',
