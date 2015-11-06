@@ -160,7 +160,7 @@ class RainGage:
             self.get_RG_lon_lat()
 
         storm = self.RG_lon_lat.join(storm)
-        self.storm = storm
+        self.storm = storm[:]
         for col in storm:
             if col not in self.RG_lon_lat.columns:
                 storm[col] = storm[col].replace(0, np.nan)
@@ -169,7 +169,7 @@ class RainGage:
     def create_title(self, title, time_step='15min', interval='seasonal',
                      gage=None, month=None, hour=None):
         if gage is not None:
-            title = '{g}: '.format(g=gage)+title
+            title = '{g}: '.format(g=', '.join(gage))+title
         if month is not None:
             title = title + ' for Month {m} of'.format(m=month)
         elif hour is not None:
@@ -178,7 +178,8 @@ class RainGage:
             title = title + ' for Months of'
         elif interval is 'diurnal':
             title = title + ' for Hours of'
-        full_title = (title +' {year}').format(ts=time_step, year=self.year)
+        ts = time_step.replace('min', ' minute').replace('T', ' minute').replace('H', ' hour').replace('D', ' day')
+        full_title = (title +' {year}').format(ts=ts, year=self.year)
         self.title = full_title
         
     def get_prob_wet(self, time_step='15min', interval='seasonal', show_all=False,
@@ -227,8 +228,7 @@ class RainGage:
     def get_boxplots(self, time_step='15min', interval='seasonal', 
                      gage=None, month=None, hour=None, look_closer=None):
         self.group = choose_group(self.df, interval, gage, month, hour)
-        wet_rates = []
-        labels = []
+        wet_rates = {}
         for name, df in self.group:
             if look_closer is not None:
                 if name not in look_closer:
@@ -237,12 +237,11 @@ class RainGage:
                 if name%2 == 1:  # if the hour is odd
                     continue
             df = df.resample(time_step, how='mean', label='right', closed='right')
-            df = df[df.T >= self.thresh]  # only keep wet days
+            df = df[df >= self.thresh].dropna()  # only keep wet days
             df = df * self.per_hour  # Make it a rain rate
-            wet_rates.append(df.values)
-            labels.append(name)
+            wet_rates.update({name:df.values})
         fig = plt.figure(figsize=(len(wet_rates)*4/3,4))
-        plt.boxplot(wet_rates, sym='', whis=[10,90], meanline=True, labels=labels)
+        plt.boxplot(wet_rates.values(), sym='', whis=[10,90], meanline=True, labels=wet_rates.keys())
         plt.yscale('linear')
         plt.ylabel('Rain Rate (mm/hr)')
         title = '{ts} Rain Rate Distribution (excluding dry {ts})'
@@ -262,7 +261,7 @@ class RainGage:
                 if name%4 != 0:  # if the hour isn't divisible by 4
                     continue
             df = df.resample(time_step, how='mean',label='right',closed='right')
-            df = df[df.T >= self.thresh]  # only keep wet days
+            df = df[df >= self.thresh].dropna()  # only keep wet days
             df = df * self.per_hour  # Make it a rain rate
             foo.append(df.quantile(np.arange(0,1.001,.001)))
             labels.append(name)
