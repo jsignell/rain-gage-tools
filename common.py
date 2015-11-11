@@ -57,7 +57,7 @@ def choose_group(df, interval, gage=None, m=None, h=None):
     return group1
 
         
-def map_rain(df):
+def map_rain(df, save_path='.', title='rain_map'):
     """
     Map rainfall at each gage location 
     
@@ -73,11 +73,31 @@ def map_rain(df):
     
     nrows = int(np.floor(len(cols)**.5))
     ncols = int(np.ceil(len(cols)/nrows))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(min(ncols*5, 16), nrows*4), sharey=True)
-    fig.subplots_adjust(hspace=.3, wspace=0.1)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(16, 10/(ncols)*nrows), sharey=True)
+    fig.suptitle(title, fontsize=18)
+    fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
 
     for col, ax in zip(cols, axes.reshape(1, len(cols))[0]):
         df.plot(kind='scatter', x='lon', y='lat', c=col, s=100, cmap='gist_earth_r', ax=ax)
         ax.set_title(col)
-        
-    return fig
+   
+    plt.savefig(save_path+title+'.jpg')
+
+def create_title(title, year=None, time_step=None, interval=None,
+                 gage=None, month=None, hour=None):
+    if gage is not None:
+        title = '{g}: '.format(g=', '.join(gage))+title
+    if month is not None:
+        title = title + ' for Month {m} of'.format(m=month)
+    elif hour is not None:
+        title = title + ' for Hour {h} of'.format(h=hour) 
+    elif interval is 'seasonal':
+        title = title + ' for Months of'
+    elif interval is 'diurnal':
+        title = title + ' for Hours of'
+    if time_step is not None:
+        ts = time_step.replace('min', ' minute').replace('T', ' minute').replace('H', ' hour').replace('D', ' day')
+        title = title.format(ts=ts)
+    if year is not None:
+        title = title +' '+ year
+    return title
