@@ -7,14 +7,20 @@ class Event:
     Events are transposes of RainGage objects
     TODO: make this more about different times
     '''
-    def __init__(self, gage=None, radar=None, date=None):
-        gage.get_RG_lon_lat()
+    def __init__(self, gage=None, radar=None, date=None, time_step=None, path='SVG_data'):
+        if not hasattr(gage,'RG_lon_lat'):
+            gage.get_RG_lon_lat()
         self.gage = gage
-        self.radar = radar
         self.date = date
-        self.df = gage.RG_lon_lat.join(pd.DataFrame({'gage': gage.rate[date].mean()}))
-        self.df = self.df.join(pd.DataFrame({'radar': radar.rate[date].mean()}))
-
+        if radar is not None:
+            self.radar = radar
+            self.df = gage.RG_lon_lat.join(pd.DataFrame({'gage': gage.rate[date].mean()}))
+            self.df = self.df.join(pd.DataFrame({'radar': radar.rate[date].mean()}))
+            self.df = self.df.drop(self.df[self.df.lat == 0].index)
+        else:
+            gage.get_storm(date, time_step=None, path='SVG_data')
+            self.df = gage.storm
+            
     def map_event(self):
         g = self.df.gage.max()-self.df.gage.min()
         r = self.df.radar.max()-self.df.radar.min()

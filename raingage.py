@@ -6,50 +6,26 @@ import pandas as pd
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
-def choose_group(df, interval, gage=None, m=None, h=None):
-    if gage is not None and type(gage) is not list and type(gage) is not tuple:
-        gage = [gage]
-    if m in range(1,13,1):
-        interval='seasonal'
-    elif h in range(0,24,1):
-        interval='diurnal'
-    if interval is 'seasonal':
-        if gage is None:
-            group = df.mean(axis=1).groupby(df.index.month)
-        elif set(gage) <= set(df.columns):
-            group = df[gage].groupby(df[gage].index.month)
-    elif interval is 'diurnal':
-        if gage is None:
-            group = df.mean(axis=1).groupby(df.index.hour)
-        elif set(gage) <= set(df.columns):
-            group = df[gage].groupby(df[gage].index.hour)
-
-    if m is None and h is None:
-        return group
-    elif m in range(1,13,1):
-        for name, df in group:
-            if name == m:
-                group1 = df.groupby(df.index.hour)
-    elif h in range(0,24,1):
-        for name, df in group:
-            if name == h:
-                group1 = df.groupby(df.index.month) 
-    return group1
-
-
+from common import choose_group, map_rain
+    
 class RainGage:
     '''
     Base class for RainGage files
     '''
-    def __init__(self, df_file=None, path='.', year=None, name="Philadelphia_raingage_{YEAR}_NAN_filled.dat"):
+    def __init__(self, df_file=None, path='.', year=None, name="Philadelphia_raingage_{YEAR}_NAN_filled.dat",
+                 freq='15min', per_hour=4, ngages=24, units='mm', ll_file="RG_lon_lat.txt", save_path='.'):
         '''
         If you choose to give a year, you still need to give a path to the
         parent directory and a general name for the files. 
         '''
-        self.freq = '15min'
-        self.per_hour = 4
-        self.ngages = 24
+        self.freq = freq
+        self.per_hour = per_hour
+        self.ngages = ngages
+        self.units = units
+        self.ll_file = ll_file
         self.path = path.replace('\\','/')
+        self.save_path = save_path.replace('\\','/')
+        
         if not path.endswith('/'):
             self.path = self.path + '/'
         
@@ -75,10 +51,13 @@ class RainGage:
         else:
             print "Error: incorrect init of RainGage"
 
+        if self.units.startswith('in'):
+            self.df = self.df * 25.4
+            self.units = 'mm'
         self.rate = self.df*self.per_hour
         self.reset_thresh()
         self.get_wet()
-
+  
     def get_files(self, year, name):
         f = [name.format(YEAR=y) for y in year]
         self.name = f
@@ -95,18 +74,58 @@ class RainGage:
         print self.year
         print self.freq
         print self.per_hour
+        print self.ngages
+        print self.units
+        print self.thresh
+        print self.ll_file
     
-    def get_RG_lon_lat(self, filename="RG_lon_lat.txt"):
-        RG_lon_lat = pd.read_csv(self.path+filename, delim_whitespace=True, 
-                                 header=None, names=['RG', 'lon', 'lat'])
-        RG_lon_lat.index.name = 'order_in_file'
-        RG_lon_lat['RG'] = 'RG' + RG_lon_lat['RG'].apply(str)
-        RG_lon_lat.index = RG_lon_lat['RG']
-        RG_lon_lat['Y'] = RG_lon_lat['lat']*110.574
-        RG_lon_lat['X'] = RG_lon_lat['lon']*111.320*(RG_lon_lat['lat']*pi/180).apply(cos)
-        RG_lon_lat['X'] = RG_lon_lat['X'] - min(RG_lon_lat['X'])
-        RG_lon_lat['Y'] = RG_lon_lat['Y'] - min(RG_lon_lat['Y'])
-        self.RG_lon_lat = RG_lon_lat
+    def get_ll(self, cols=['RG', 'lon', 'lat'], path=None, ll_file=None):
+        if ll_file is None:
+            ll_file = self.ll_file
+        if path is None:
+            path = self.path
+        ll = pd.read_csv(path+ll_file, delim_whitespace=True, 
+                                 header=None, names=cols)
+        if 'RG' not in cols:
+            ll['RG'] = ll.index + 1
+        ll['RG'] = 'RG' + ll['RG'].apply(str)
+        ll.index = ll['RG']
+            
+        ll['Y'] = ll['lat']*110.574
+        ll['X'] = ll['lon']*111.320*(ll['lat']*pi/180).apply(cos)
+        ll['X'] = ll['X'] - min(ll['X'])
+        ll['Y'] = ll['Y'] - min(ll['Y'])
+        self.ll = ll
+    
+    def plot_ll(self, save_path='./output/StLouis/'):
+        df = self.ll[self.ll.lat!=0]
+        x_dist=[]
+        y_dist=[]
+        for i, val in enumerate(df.X):
+            a = (val-df.X[(i+1):]).reshape(-1)
+            x_dist = np.concatenate((x_dist, a))
+        for i, val in enumerate(df.Y):
+            a = (val-df.Y[(i+1):]).reshape(-1)
+            y_dist = np.concatenate((y_dist, a))
+
+        title = 'Distances between gages (angle of {angle} from horizontal)'
+
+        plt.figure(figsize=(10,8))
+        plt.scatter(x_dist,y_dist, s=5)
+        plt.ylabel('Y distance (km)')
+        plt.xlabel('X distance (km)')
+
+        # determine best fit line
+        par = np.polyfit(x_dist, y_dist, 1, full=True)
+
+        slope=par[0][0]
+        intercept=par[0][1]
+        xl = [min(x_dist), max(x_dist)]
+        yl = [slope*xx + intercept for xx in xl]
+        plt.plot(xl, yl, '-r')
+
+        plt.title(title.format(angle=round(slope*90)))
+        plt.savefig(save_path+'{title}.jpg'.format(title=title).format(angle=round(slope*90)))
     
     def get_df(self): 
         dates = ['year','month','day','hour','minute']
@@ -115,8 +134,8 @@ class RainGage:
         [names.append(i) for i in RG]
         
         dateparse = lambda x: pd.datetime.strptime(x, '%Y %m %d %H %M')
-        self.df = pd.read_csv(self.path+self.name, delim_whitespace=True, header=None, names=names,
-                              na_values = '-99',
+        self.df = pd.read_csv(self.path+self.name, header=None, names=names,
+                              delim_whitespace=True, na_values = '-99',
                               parse_dates={'date_time': dates},
                               date_parser=dateparse, index_col=[0])
     
@@ -126,48 +145,10 @@ class RainGage:
     def get_wet(self):
         self.wet = self.df >= self.thresh
     
-    def get_wettest(self, time_step='15min', path='SVG_data'):
-        df = self.df.resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
-        
-        if not hasattr(self,'thresh'):
-            self.get_thresh()
-
-        wet = df >= self.thresh
-        df = df.drop(wet[wet.sum(axis=1) != 24].index)
-        wettest = df.sum(axis=1).sort_values()
-
-        list_of_series = []
-        for t in wettest.tail(5).index:
-            list_of_series.append(df.loc[t])
-        
-        if not hasattr(self,'RG_lon_lat'):
-            self.get_RG_lon_lat()
- 
-        self.wettest = self.RG_lon_lat.join(list_of_series)
-        self.wettest.to_csv(path, index=False)
-
-    def get_storm(self, storm_day='2013-08-13', time_step='15min', path='SVG_data'):
-        df = self.df[storm_day].resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
-
-        if not hasattr(self,'thresh'):
-            self.get_thresh()
-
-        wet = df >= self.thresh
-        df = df.drop(wet[wet.sum(axis=1) <= 8].index)
-        storm = df.transpose()
-
-        if not hasattr(self,'RG_lon_lat'):
-            self.get_RG_lon_lat()
-
-        storm = self.RG_lon_lat.join(storm)
-        self.storm = storm[:]
-        for col in storm:
-            if col not in self.RG_lon_lat.columns:
-                storm[col] = storm[col].replace(0, np.nan)
-        storm.to_csv(path, index=False)
-
-    def create_title(self, title, time_step='15min', interval='seasonal',
+    def create_title(self, title, time_step=None, interval='seasonal',
                      gage=None, month=None, hour=None):
+        if time_step is None:
+            time_step = self.freq
         if gage is not None:
             title = '{g}: '.format(g=', '.join(gage))+title
         if month is not None:
@@ -182,8 +163,10 @@ class RainGage:
         full_title = (title +' {year}').format(ts=ts, year=self.year)
         self.title = full_title
         
-    def get_prob_wet(self, time_step='15min', interval='seasonal', show_all=False,
+    def plot_prob_wet(self, time_step=None, interval='seasonal', show_all=False,
                      gage=None, month=None, hour=None, look_closer=None, lc=None):
+        if time_step is None:
+            time_step = self.freq
         fig = plt.figure(figsize=(16,6))
         ax = fig.add_subplot(111)
         self.wet = self.wet.resample(time_step, how='sum',label='right', closed='right')>=1
@@ -225,8 +208,10 @@ class RainGage:
         self.create_title('Probability of wet {ts}',time_step, interval, gage, month, hour)
         plt.title(self.title)
 
-    def get_boxplots(self, time_step='15min', interval='seasonal', 
+    def plot_boxplots(self, time_step=None, interval='seasonal', 
                      gage=None, month=None, hour=None, look_closer=None):
+        if time_step is None:
+            time_step = self.freq
         self.group = choose_group(self.df, interval, gage, month, hour)
         wet_rates = {}
         for name, df in self.group:
@@ -248,8 +233,10 @@ class RainGage:
         self.create_title(title, time_step, interval, gage, month, hour)
         plt.title(self.title)
 
-    def get_distribution(self, time_step='15min', interval='seasonal', 
+    def plot_distribution(self, time_step=None, interval='seasonal', 
                          gage=None, month=None, hour=None, look_closer=None):
+        if time_step is None:
+            time_step = self.freq
         self.group = choose_group(self.df, interval, gage, month, hour)
         labels = []
         foo = []
@@ -280,5 +267,58 @@ class RainGage:
         ax1 = fig.add_subplot(212)
         self.quantiles.plot(xlim=(0.9,1),ax=ax1, legend=None)
         ax1.set_ylabel('Rain Rate (mm/hr)') 
+              
+    def get_wettest(self, time_step=None, path='SVG_data'):
+        if time_step is None:
+            time_step = self.freq
+
+        df = self.df.resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
         
+        if not hasattr(self,'thresh'):
+            self.get_thresh()
+
+        wet = df >= self.thresh
+        df = df.drop(wet[wet.sum(axis=1) != self.ngages].index)
+        wettest = df.sum(axis=1).sort_values()
+
+        list_of_series = []
+        for t in wettest.tail(5).index:
+            list_of_series.append(df.loc[t])
         
+        if not hasattr(self,'ll'):
+            self.get_ll()
+ 
+        self.wettest = self.ll.join(list_of_series)
+        self.wettest.to_csv(path, index=False)
+    
+    def get_rainiest_days(self, n):
+        if not hasattr(self,'ll'):
+            self.get_ll()
+        rainiest = self.rate.resample('24H', how='mean', closed='right', label='right', base=12)
+        largest = rainiest.mean(axis=1).sort_values().tail(n)
+        r = self.ll.join(rainiest.loc[largest.index].transpose())
+        self.rainiest = r[r.lat != 0] 
+    
+    def get_storm(self, storm_day='2013-08-13', time_step=None, path='SVG_data'):
+        if time_step is None:
+            time_step = self.freq
+        df = self.df[storm_day].resample(time_step, how='sum',label='right', closed='right').dropna(how='all')
+
+        if not hasattr(self,'thresh'):
+            self.get_thresh()
+
+        wet = df >= self.thresh
+        df = df.drop(wet[wet.sum(axis=1) <= 18].index) # nCr for 18C2 produces just 5 bins of 30, so this is the fewest for good results
+        storm = df.transpose()
+
+        if not hasattr(self,'ll'):
+            self.get_ll()
+
+        storm = self.ll.join(storm)
+        storm = storm.drop(storm[storm.lat == 0].index)
+        self.storm = storm[:]
+        for col in storm:
+            if col not in self.ll.columns:
+                storm[col] = storm[col].replace(0, np.nan)
+        storm.to_csv(path, index=False)
+
