@@ -7,54 +7,80 @@ import pandas as pd
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
-def choose_group(df, interval, gage=None, m=None, h=None):
+def get_index(df, index='date_time'):
+    for i, full in enumerate(df.axes):
+        if full.name == index:
+            return (i, full)
+    
+def get_resample_kwargs(df):
+    resample_kwargs = dict(how='mean', closed='right', label='right')
+    i = get_index(df, index='date_time')[0]
+    resample_kwargs.update({'axis': i})
+    return resample_kwargs
+
+def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
     """
     Choose group fitting the given criteria
     
     Parameters
     ----------
-    df : Dataframe object with times down the index and rain gages as the columns
+    df : Dataframe object with times down the index and rain gages as the columns, or 
+         a Panel object of two dataframes. 
+    
+    time_step : time string to use as method for resample: '15min', '1H', ...
+    
+    base : integer offest used in resample
     
     interval : {'seasonal', 'diurnal'}
     
     gage : list of gages as strings ['RG1', 'RG2'...]
     
-    m : int exclude all months but this one
+    m : int or list of ints exclude all months but this/these
     
-    h : int exclude all hours but this one
+    h : int or list of ints exclude all hours but this/these
 
     Returns
     -------
-    group : map of rain intensity at each location
-    """
-    if gage is not None and type(gage) is not list and type(gage) is not tuple:
-        gage = [gage]
-    if m in range(1,13,1):
-        interval='seasonal'
-    elif h in range(0,24,1):
-        interval='diurnal'
-    if interval is 'seasonal':
-        if gage is None:
-            group = df.mean(axis=1).groupby(df.index.month)
-        elif set(gage) <= set(df.columns):
-            group = df[gage].groupby(df[gage].index.month)
-    elif interval is 'diurnal':
-        if gage is None:
-            group = df.mean(axis=1).groupby(df.index.hour)
-        elif set(gage) <= set(df.columns):
-            group = df[gage].groupby(df[gage].index.hour)
+    group : groupby object
+    """    
+    if time_step is not None:
+        df = df.resample(time_step, base=base, **get_resample_kwargs(df))
+    date_time = get_index(df, 'date_time')[1]
+    a = get_index(df, index='RG')[0]
+    
+    # Choose along gage axis
+    if gage is None:
+        df = df.mean(axis=a)
+    elif type(gage) is not list and type(gage) is not tuple:
+        df = df[[gage]]
+    else:
+        df = df[gage]
+        
+    # Group along time axis
+    if (interval is 'seasonal' and h is None) or (interval is 'diurnal' and m is not None):
+        gb = df.groupby(date_time.month)
+    elif (interval is 'diurnal' and m is None) or (interval is 'seasonal' and h is not None):
+        gb = df.groupby(date_time.hour)
 
     if m is None and h is None:
-        return group
-    elif m in range(1,13,1):
-        for name, df in group:
-            if name == m:
-                group1 = df.groupby(df.index.hour)
-    elif h in range(0,24,1):
-        for name, df in group:
-            if name == h:
-                group1 = df.groupby(df.index.month) 
-    return group1
+        return gb
+    elif interval is 'diurnal' and m is not None:
+        if type(m) is list or type(m) is tuple:
+            df = pd.concat([gb.get_group(n) for n in m])
+        else:
+            df = gb.get_group(m)
+        date_time = get_index(df, 'date_time')[1]
+        gb = df.groupby(date_time.hour)
+    
+    elif interval is 'seasonal' and h is not None:
+        if type(h) is list or type(h) is tuple:
+            df = pd.concat([gb.get_group(n) for n in h])
+        else:
+            df = gb.get_group(h)
+        date_time = get_index(df, 'date_time')[1]
+        gb = df.groupby(date_time.month)
+    
+    return gb
 
         
 def map_rain(df, save_path='.', title='rain_map'):
@@ -83,14 +109,27 @@ def map_rain(df, save_path='.', title='rain_map'):
    
     plt.savefig(save_path+title+'.jpg')
 
-def create_title(title, year=None, time_step=None, interval=None,
-                 gage=None, month=None, hour=None):
+def create_title(title, year=None, time_step=None, base=0, interval=None,
+                 gage=None, m=None, h=None):
+    """
+    Create an appropriate title from the rain related parameters and the starter title
+    
+    Parameters
+    ----------
+    title : str optionally containing '{ts}' where the time_step should go
+    
+    **kwargs
+
+    Returns
+    -------
+    title : str containing a legible title which can also be used as a filename
+    """
     if gage is not None:
         title = '{g}: '.format(g=', '.join(gage))+title
-    if month is not None:
-        title = title + ' for Month {m} of'.format(m=month)
-    elif hour is not None:
-        title = title + ' for Hour {h} of'.format(h=hour) 
+    if m is not None:
+        title = title + ' for Month {m} of'.format(m=m)
+    elif h is not None:
+        title = title + ' for Hour {h} of'.format(h=h) 
     elif interval is 'seasonal':
         title = title + ' for Months of'
     elif interval is 'diurnal':

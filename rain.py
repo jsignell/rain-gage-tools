@@ -6,19 +6,25 @@ import pandas as pd
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
-from common import choose_group, map_rain, create_title
-    
+from common import *
+
 class Rain:
     '''
     Base class for Rain files
     '''
+    group_kwargs = dict(time_step=None, 
+                    base=0, 
+                    interval='seasonal',
+                    gage=None, 
+                    m=None, 
+                    h=None)
+    
     def __init__(self, df_file=None, path='.', year=None, name="Philadelphia_raingage_{YEAR}_NAN_filled.dat",
                  freq='15min', per_hour=4, ngages=24, units='mm', ll_file="RG_lon_lat.txt", save_path='.'):
         '''
         If you choose to give a year, you still need to give a path to the
         parent directory and a general name for the files. 
         '''
-        self.resample_kwargs = dict(how='mean', closed='right', label='right')
         self.freq = freq
         self.per_hour = per_hour
         self.ngages = ngages
@@ -35,7 +41,8 @@ class Rain:
             self.df = pd.read_csv(self.path+self.name, 
                                   delim_whitespace=True, na_values='-99', 
                                   index_col=0, parse_dates=True)
-            self.year = '{first_year} to {last_year}'.format(first_year=self.df.index[0].year,
+            self.df.columns.name = 'RG'
+            self.year = '{first_year}-{last_year}'.format(first_year=self.df.index[0].year,
                                                              last_year=self.df.index[-1].year)
         elif year is None:
             self.name = name
@@ -47,7 +54,7 @@ class Rain:
             self.get_df()
         elif type(year) is list or type(year) is tuple:
             self.get_files(year, name)
-            self.year = '{first_year} to {last_year}'.format(first_year=year[0],
+            self.year = '{first_year}-{last_year}'.format(first_year=year[0],
                                                              last_year=year[-1])
         else:
             print "Error: incorrect init of RainGage"
@@ -139,102 +146,110 @@ class Rain:
                               delim_whitespace=True, na_values = '-99',
                               parse_dates={'date_time': dates},
                               date_parser=dateparse, index_col=[0])
+        self.df.columns.name = 'RG'
     
+    def plot_rate(self, time_step=None, base=0, interval='seasonal',
+                  gage=None, m=None, h=None):
+        if time_step is None:
+            time_step = self.freq
+        kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
+        self.gb = choose_group(self.rate, **kwargs)
+        if interval is 'seasonal' and m is not None:
+            if type(m) is not list and type(m) is not tuple:
+                m = [m]
+            df = self.gb.mean().loc[m]
+        elif interval is 'diurnal' and h is not None:
+            if type(h) is not list and type(h) is not tuple:
+                h = [h]
+            df = self.gb.mean().loc[h]
+        else:
+            df = self.gb.mean()
+        title = create_title('{ts} Rain Rate', self.year, **kwargs)
+        df.plot(kind='bar', figsize=(16,6), title=title)
+        plt.ylabel('Mean Rain Rate (mm/hr)')
+        plt.savefig(self.save_path+title+'.jpg')
+            
     def reset_thresh(self): 
         self.thresh = min([i for i in self.df[self.df.columns[0]] if i > 0])
-        
+
     def get_wet(self):
-        self.wet = self.df >= self.thresh
+        self.wet = self.rate >= self.thresh * self.per_hour
         
-    def plot_prob_wet(self, time_step=None, interval='seasonal', show_all=False,
-                     gage=None, month=None, hour=None, look_closer=None, lc=None):
+    def plot_prob_wet(self, time_step=None, interval='seasonal', base=0,
+                     gage=None, m=None, h=None):
         if time_step is None:
             time_step = self.freq
         fig = plt.figure(figsize=(16,6))
         ax = fig.add_subplot(111)
-        self.wet = self.wet.resample(time_step, how='sum',label='right', closed='right')>=1
-
-        if show_all is False:
-            self.group = choose_group(self.wet, interval, gage, month, hour)
-            if look_closer is None:
-                self.group.mean().plot(kind='bar', ax=ax)
-            elif look_closer is not None:
-                self.group.mean()[look_closer].plot(kind='bar', ax=ax)
-            elif lc is not None:
-                self.group.mean()[look_closer].loc[lc].plot(kind='bar', ax=ax)
-
+        
+        kwargs = dict(interval=interval, gage=gage, m=m, h=h)
+        d, date_time = get_index(self.wet, 'date_time')
+        
+        self.wet = self.wet.resample(time_step, axis=d, how='sum',label='right', closed='right')>=1
+        self.gb = choose_group(self.rate, **kwargs)
+        if interval is 'seasonal' and m is not None:
+            if type(m) is not list and type(m) is not tuple:
+                m = [m]
+            df = self.gb.mean().loc[m]
+        elif interval is 'diurnal' and h is not None:
+            if type(h) is not list and type(h) is not tuple:
+                h = [h]
+            df = self.gb.mean().loc[h]
         else:
-            if gage is None or len(gage) > 1:
-                gage = None
-                show_all = self.wet.mean(axis=1).groupby([self.wet.index.hour, self.wet.index.month]).mean().unstack()
-            elif len(gage) is 1:
-                show_all = self.wet[gage].groupby([self.wet.index.hour, self.wet.index.month]).mean().unstack() 
-            show_all.index.name='hours'
-            show_all.columns.name='months'
-            self.show_all = show_all
-            if month is None:
-                show_all.plot(kind='bar', ax=ax)
-            else:
-                if gage is None:
-                    if hour is None:
-                        show_all[month].plot(kind='bar', ax=ax)
-                    else:
-                        show_all[month].loc[hour].plot(kind='bar', ax=ax)
-                else:
-                    sliceit = zip(gage*len(month), month)
-                    if hour is None:
-                        show_all[sliceit].plot(kind='bar', ax=ax)
-                    else:
-                        show_all[sliceit].loc[hour].plot(kind='bar', ax=ax)
+            df = self.gb.mean()
+        df.plot(kind='bar', ax=ax)
 
         ax.set_ylabel("Probability of wet {ts}".format(ts=time_step))
-        title = create_title('Probability of wet {ts}',self.year, time_step, interval, gage, month, hour)
+        title = create_title('Probability of wet {ts}',self.year, time_step=time_step, **kwargs)
         plt.title(title)
         plt.savefig(self.save_path+title+'.jpg')
 
-    def plot_boxplots(self, time_step=None, interval='seasonal', 
-                     gage=None, month=None, hour=None, look_closer=None):
+    def plot_boxplots(self, time_step=None, base=0, interval='seasonal', gage=None, m=None, h=None):
         if time_step is None:
             time_step = self.freq
-        self.group = choose_group(self.df, interval, gage, month, hour)
+        kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
+        self.group = choose_group(self.rate, **kwargs)
         wet_rates = {}
         for name, df in self.group:
-            if look_closer is not None:
-                if name not in look_closer:
+            if interval is 'seasonal' and m is not None:
+                if name not in m:
+                    continue
+            if interval is 'diurnal' and h is not None:
+                if name not in h:
                     continue
             elif interval is 'diurnal':
                 if name%2 == 1:  # if the hour is odd
                     continue
-            df = df.resample(time_step, **self.resample_kwargs)
             df = df[df >= self.thresh].dropna()  # only keep wet days
-            df = df * self.per_hour  # Make it a rain rate
             wet_rates.update({name:df.values})
         fig = plt.figure(figsize=(len(wet_rates)*4/3,4))
         plt.boxplot(wet_rates.values(), sym='', whis=[10,90], meanline=True, labels=wet_rates.keys())
         plt.yscale('linear')
         plt.ylabel('Rain Rate (mm/hr)')
         title = '{ts} Rain Rate Distribution (excluding dry {ts})'
-        title = create_title(title, self.year, time_step, interval, gage, month, hour)
+        title = create_title(title, self.year, **kwargs)
         plt.title(title)
         plt.savefig(self.save_path+title+'.jpg')
 
-    def plot_distribution(self, time_step=None, interval='seasonal', 
-                         gage=None, month=None, hour=None, look_closer=None):
+    def plot_distribution(self, time_step=None, base=0, interval='seasonal', 
+                         gage=None, m=None, h=None, look_closer=None):
         if time_step is None:
             time_step = self.freq
-        self.group = choose_group(self.df, interval, gage, month, hour)
+        kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
+        gb = choose_group(self.df,**kwargs)
         labels = []
         foo = []
-        for name, df in self.group:
-            if look_closer is not None:
-                if name not in look_closer:
+        for name, df in gb:
+            if interval is 'seasonal' and m is not None:
+                if name not in m:
+                    continue
+            if interval is 'diurnal' and h is not None:
+                if name not in h:
                     continue
             else:
                 if name%4 != 0:  # if the hour isn't divisible by 4
                     continue
-            df = df.resample(time_step, **self.resample_kwargs)
-            df = df[df >= self.thresh].dropna()  # only keep wet days
-            df = df * self.per_hour  # Make it a rain rate
+            df = df[df >= self.thresh*self.per_hour].dropna()  # only keep wet days
             foo.append(df.quantile(np.arange(0,1.001,.001)))
             labels.append(name)
         quan = pd.DataFrame(foo).transpose()
@@ -246,7 +261,7 @@ class Rain:
         self.quantiles.plot(logy=True,ax=ax)
         ax.set_ylabel('Rain Rate (mm/hr)') 
         title = '{ts} Rain Rate Distribution (excluding dry {ts})'
-        title = create_title(title, self.year, time_step, interval, gage, month, hour)
+        title = create_title(title, self.year, **kwargs)
         plt.title(title)
         plt.savefig(self.save_path+title+'.jpg')
         
@@ -280,8 +295,10 @@ class Rain:
     def get_rainiest_days(self, n):
         if not hasattr(self,'ll'):
             self.get_ll()
-        rainiest = self.rate.resample('24H', base=12, **self.resample_kwargs)
-        largest = rainiest.mean(axis=1).sort_values().tail(n)
+        
+        rainiest = self.rate.resample('24H', base=12, **get_resample_kwargs(self.rate))
+        
+        largest = rainiest.mean(axis=get_index(self.rate, 'RG')[0]).sort_values().dropna().tail(n)
         r = self.ll.join(rainiest.loc[largest.index].transpose())
         self.rainiest = r[r.lat != 0] 
     
@@ -318,15 +335,14 @@ class RadarGage(Rain):
         self.thresh = gage.thresh
         self.path = gage.path
         self.ll_file = gage.ll_file
+        self.ll = gage.ll
         self.gage = gage
         self.radar = radar
-        self.resample_kwargs = gage.resample_kwargs
     
     def plot_correlation(self, time_step=None, base=0):
         if time_step is None:
             time_step = self.freq
- 
-        p = self.rate.resample(time_step, base=base, axis=1, **self.resample_kwargs)
+        p = self.rate.resample(time_step, base=base, **get_resample_kwargs(self.rate))
         
         title = create_title('{ts} Radar Rain Gage Correlation', year=self.year, time_step=time_step)
         plt.figure(figsize=(8,8))
