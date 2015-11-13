@@ -186,7 +186,7 @@ class Rain:
         d, date_time = get_index(self.wet, 'date_time')
         
         self.wet = self.wet.resample(time_step, axis=d, how='sum',label='right', closed='right')>=1
-        self.gb = choose_group(self.rate, **kwargs)
+        self.gb = choose_group(self.wet, **kwargs)
         if interval is 'seasonal' and m is not None:
             if type(m) is not list and type(m) is not tuple:
                 m = [m]
@@ -292,14 +292,26 @@ class Rain:
         self.wettest = self.ll.join(list_of_series)
         self.wettest.to_csv(path, index=False)
     
-    def get_rainiest_days(self, n):
+    def get_rainiest(self, n):
         if not hasattr(self,'ll'):
             self.get_ll()
         
         rainiest = self.rate.resample('24H', base=12, **get_resample_kwargs(self.rate))
         
-        largest = rainiest.mean(axis=get_index(self.rate, 'RG')[0]).sort_values().dropna().tail(n)
-        r = self.ll.join(rainiest.loc[largest.index].transpose())
+        if type(rainiest) == pd.Panel:
+            largest = rainiest.mean(axis=get_index(self.rate, 'RG')[0]).dropna(how='any').mean(axis=1).sort_values().tail(n)
+            ra = rainiest.loc[:,largest.index].transpose(0,2,1)
+            r = self.ll.join(ra.gage.add_prefix('Gage ')).join(ra.radar.add_prefix('Radar '))
+            bar = len(r.columns)
+            foo = (bar-5)/2+5
+            q = zip(range(5,foo), range(foo,bar))
+            l = range(5)
+            [l.extend(item) for item in q]
+            r = r[l]
+        else:
+            largest = rainiest.mean(axis=get_index(self.rate, 'RG')[0]).dropna().sort_values().tail(n)
+            r = self.ll.join(rainiest.loc[largest.index].transpose())
+               
         self.rainiest = r[r.lat != 0] 
     
     def get_storm(self, storm_day='2013-08-13', time_step=None, path='SVG_data'):

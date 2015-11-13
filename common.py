@@ -97,9 +97,10 @@ def map_rain(df, save_path='.', title='rain_map'):
     """
     cols = [col for col in df.columns if col not in ('RG','lat','lon','X','Y')]
     
-    nrows = int(np.floor(len(cols)**.5))
-    ncols = int(np.ceil(len(cols)/nrows))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(16, 10/(ncols)*nrows), sharey=True)
+    ncols = 2
+    nrows = len(cols)/ncols
+   
+    fig, axes = plt.subplots(nrows, ncols, figsize=(16, 5*nrows), sharey=True)
     fig.suptitle(title, fontsize=18)
     fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
 
