@@ -8,15 +8,107 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
 def get_index(df, index='date_time'):
+    """
+    Find the axis of panel or dataframe with given name
+    
+    Parameters
+    ----------
+    df : Dataframe object with times down the index and rain gages as the columns, or 
+         a Panel object of two such dataframes. 
+    
+    index : str name of axis of interest. For Rain and RadarGage objects: 'date_time' or 'RG'
+
+    Returns
+    -------
+    i, full : index of desired axis, axis itself. 
+    """    
     for i, full in enumerate(df.axes):
         if full.name == index:
             return (i, full)
     
 def get_resample_kwargs(df):
+    """
+    Get a dict of kwargs including axis to use in resampling Rain and RadarGage objects
+    
+    Parameters
+    ----------
+    df : Dataframe object with times down the index and rain gages as the columns, or 
+         a Panel object of two such dataframes. 
+   
+    Returns
+    -------
+    resample_kwargs : dict of kwargs including axis to use in resampling Rain and RadarGage objects
+    """    
     resample_kwargs = dict(how='mean', closed='right', label='right')
     i = get_index(df, index='date_time')[0]
     resample_kwargs.update({'axis': i})
     return resample_kwargs
+
+def mean_of_group(gb):
+    """
+    Compute the mean of a groupby object containing dataframes
+    takes about 3 times as long as regular mean, but uses better method
+    
+    Parameters
+    ----------
+    gb : groupby object containing dataframes
+    
+    Returns
+    -------
+    s : pandas.Series object with the groupby keys as the index
+    """
+    if type(gb.get_group(1)) is pd.DataFrame:
+        d = {}
+        for name, df in gb:
+            mean = np.nanmean(df.values)
+            d.update({name: mean})
+        s = pd.Series(d)
+        return s
+    
+    else:
+        items= gb.get_group(1).items
+        d = {key: {} for key in items}
+        for name, p in gb:
+            for i in items:
+                mean = np.nanmean(p[i].values)
+                d[i].update({name: mean})
+        df = pd.DataFrame(d)
+        return df
+
+def unweighted_daily_mean(real_df, base=12):
+    """
+    takes about 200 times as long as regular resampling but yeilds a better result if only 
+    marginally so
+    
+    Parameters
+    ----------    
+    real_df : pandas.DataFrame object 
+    
+    base : as in resample
+    
+    Returns
+    -------
+    s : pandas.Series object containing the daily means 
+    """
+    s = None
+    bar = None
+    tomorrow = (real_df.index[0] + pd.DateOffset(1)).date()
+    today = real_df.index[0].date()
+    for (d, h), df in real_df.groupby((real_df.index.date,real_df.index.hour)):
+        if d==tomorrow and h<base:
+            bar = np.concatenate((bar,df.values.reshape(-1)))
+        elif h == base:
+            if bar is not None:
+                val = np.nanmean(bar)
+                s = pd.concat((s, pd.Series({d : val})))
+            bar = df.values.reshape(-1)
+            today = d
+            tomorrow = (d + pd.DateOffset(1)).date()
+        elif d==today and h>base:
+            bar = np.concatenate((bar, df.values.reshape(-1)))
+        else:
+            continue
+    return s
 
 def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
     """
@@ -41,7 +133,7 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
 
     Returns
     -------
-    group : groupby object
+    gb : groupby object
     """    
     if time_step is not None:
         df = df.resample(time_step, base=base, **get_resample_kwargs(df))
@@ -83,7 +175,7 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
     return gb
 
         
-def map_rain(df, save_path='.', title='rain_map'):
+def map_rain(df, save_path='.', title='rain_map', save=True):
     """
     Map rainfall at each gage location 
     
@@ -107,8 +199,8 @@ def map_rain(df, save_path='.', title='rain_map'):
     for col, ax in zip(cols, axes.reshape(1, len(cols))[0]):
         df.plot(kind='scatter', x='lon', y='lat', c=col, s=100, cmap='gist_earth_r', ax=ax)
         ax.set_title(col)
-   
-    plt.savefig(save_path+title+'.jpg')
+    if save:
+        plt.savefig(save_path+title+'.jpg')
 
 def create_title(title, year=None, time_step=None, base=0, interval=None,
                  gage=None, m=None, h=None):
