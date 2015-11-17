@@ -44,6 +44,19 @@ def get_resample_kwargs(df):
     resample_kwargs.update({'axis': i})
     return resample_kwargs
 
+def interval_is_None(df, gage):
+    if type(gage) is tuple or type(gage) is list:
+        try:
+            df = df.mean(axis=get_index(df, 'date_time')[0]).loc[gage]
+        except:
+            df = df.mean(axis=get_index(df, 'date_time')[0]).loc[gage, :]
+    else:
+        try:
+            df = df.to_frame().mean()
+        except:
+            df = df.mean(axis=get_index(df, 'date_time')[0])
+    return df
+
 def mean_of_group(gb):
     """
     Compute the mean of a groupby object containing dataframes
@@ -143,20 +156,20 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
     # Choose along gage axis
     if gage is None:
         df = df.mean(axis=a)
-    elif type(gage) is not list and type(gage) is not tuple:
-        df = df[[gage]]
     else:
-        df = df[gage]
-        
+        try:
+            df = df.loc[:,gage]
+        except: 
+            df = df.loc[:,:,gage]
+    
     # Group along time axis
-    if (interval is 'seasonal' and h is None) or (interval is 'diurnal' and m is not None):
+    if interval is 'seasonal' and h is None:
         gb = df.groupby(date_time.month)
-    elif (interval is 'diurnal' and m is None) or (interval is 'seasonal' and h is not None):
+    elif interval is 'diurnal' and m is None:
         gb = df.groupby(date_time.hour)
-
-    if m is None and h is None:
-        return gb
+     
     elif interval is 'diurnal' and m is not None:
+        gb = df.groupby(date_time.month)
         if type(m) is list or type(m) is tuple:
             df = pd.concat([gb.get_group(n) for n in m])
         else:
@@ -165,16 +178,34 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
         gb = df.groupby(date_time.hour)
     
     elif interval is 'seasonal' and h is not None:
+        gb = df.groupby(date_time.hour)
         if type(h) is list or type(h) is tuple:
             df = pd.concat([gb.get_group(n) for n in h])
         else:
             df = gb.get_group(h)
         date_time = get_index(df, 'date_time')[1]
         gb = df.groupby(date_time.month)
+    else:
+        df = interval_is_None(df, gage)
+        gb = [('all',df)]
     
     return gb
 
-        
+def df_from_gb(gb, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
+    if interval is 'seasonal' and m is not None:
+        if type(m) is not list and type(m) is not tuple:
+            m = [m]
+        df = gb.mean().loc[m]
+    elif interval is 'diurnal' and h is not None:
+        if type(h) is not list and type(h) is not tuple:
+            h = [h]
+        df = gb.mean().loc[h]
+    elif interval is 'diurnal' or interval is 'seasonal':
+        df = gb.mean()
+    else:
+        df = gb[0][1]
+    return df
+
 def map_rain(df, save_path='.', title='rain_map', save=True):
     """
     Map rainfall at each gage location 
@@ -187,6 +218,7 @@ def map_rain(df, save_path='.', title='rain_map', save=True):
     -------
     fig : map of rain intensity at each location
     """
+    df = df[df.lat > -200]
     cols = [col for col in df.columns if col not in ('RG','lat','lon','X','Y')]
     
     ncols = 2
@@ -217,8 +249,11 @@ def create_title(title, year=None, time_step=None, base=0, interval=None,
     -------
     title : str containing a legible title which can also be used as a filename
     """
-    if gage is not None:
-        title = '{g}: '.format(g=', '.join(gage))+title
+    if type(gage) is list or type(gage) is tuple:
+        title = title + ' at listed gages'
+    elif gage is not None:
+        title = title + ' at '+ gage
+    
     if m is not None:
         title = title + ' for Month {m} of'.format(m=m)
     elif h is not None:
