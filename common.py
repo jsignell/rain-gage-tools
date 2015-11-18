@@ -44,6 +44,20 @@ def get_resample_kwargs(df):
     resample_kwargs.update({'axis': i})
     return resample_kwargs
 
+def get_prob_wet(df, a, thresh):
+    wet = None
+    d = {}
+    for i in df.axes[a]:
+        w = df[i][df[i]>= thresh].count()
+        nonnull = df[i].count()
+        try:
+            wet = pd.concat((wet, pd.Series({i: w/float(nonnull)})))
+        except:
+            d.update({i: w/nonnull})
+    if d != {}:
+        wet = pd.DataFrame(d)
+    return wet
+
 def interval_is_None(df, gage):
     if type(gage) is tuple or type(gage) is list:
         try:
@@ -123,7 +137,7 @@ def unweighted_daily_mean(real_df, base=12):
             continue
     return s
 
-def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
+def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h=None, wet=False):
     """
     Choose group fitting the given criteria
     
@@ -149,7 +163,11 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
     gb : groupby object
     """    
     if time_step is not None:
-        df = df.resample(time_step, base=base, **get_resample_kwargs(df))
+        resample_kwargs = get_resample_kwargs(df)
+        if wet:
+            resample_kwargs.update({'how':'sum'})
+        df = df.resample(time_step, base=base, **resample_kwargs)
+        
     date_time = get_index(df, 'date_time')[1]
     a = get_index(df, index='RG')[0]
     
@@ -161,6 +179,7 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
             df = df.loc[:,gage]
         except: 
             df = df.loc[:,:,gage]
+    a, RG = get_index(df, index='RG')
     
     # Group along time axis
     if interval is 'seasonal' and h is None:
@@ -186,12 +205,11 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
         date_time = get_index(df, 'date_time')[1]
         gb = df.groupby(date_time.month)
     else:
-        df = interval_is_None(df, gage)
         gb = [('all',df)]
     
     return gb
 
-def df_from_gb(gb, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
+def gb_to_df(gb, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
     if interval is 'seasonal' and m is not None:
         if type(m) is not list and type(m) is not tuple:
             m = [m]
@@ -203,8 +221,22 @@ def df_from_gb(gb, time_step=None, base=0, interval=None, gage=None, m=None, h=N
     elif interval is 'diurnal' or interval is 'seasonal':
         df = gb.mean()
     else:
-        df = gb[0][1]
+        df = interval_is_None(gb[0][1], gage)
     return df
+
+def gb_to_prob_wet(gb, thresh, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
+    if interval is None:
+        wet = get_prob_wet(gb[0][1], 0, thresh)
+    else:
+        a = get_index(gb.get_group(1), 'RG')[0]
+        d = {}
+        for name, df in gb:
+            d.update({name: get_prob_wet(df, a, thresh)})
+        try:
+            wet = pd.DataFrame(d)
+        except:
+            wet = pd.Panel(d)
+    return wet
 
 def map_rain(df, save_path='.', title='rain_map', save=True):
     """

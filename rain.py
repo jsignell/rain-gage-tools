@@ -64,7 +64,6 @@ class Rain:
             self.units = 'mm'
         self.rate = self.df*self.per_hour
         self.reset_thresh()
-        self.get_wet()
   
     def get_files(self, year, name):
         f = [name.format(YEAR=y) for y in year]
@@ -154,7 +153,7 @@ class Rain:
                   gage=None, m=None, h=None, save=True, map=False):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, **kwargs)
-        self.df = df_from_gb(self.gb, **kwargs)
+        self.df = gb_to_df(self.gb, **kwargs)
                 
         if time_step is None:
             kwargs.update(dict(time_step=self.freq))
@@ -168,28 +167,34 @@ class Rain:
             map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title)
             
     def reset_thresh(self): 
-        self.thresh = min([i for i in self.df[self.df.columns[0]] if i > 0])
+        self.thresh = (min([i for i in self.df[self.df.columns[0]] if i > 0])-.001) * self.per_hour
 
-    def get_wet(self):
-        self.wet = self.rate >= self.thresh * self.per_hour
+    def get_wet(self, df):
+        if df is None:
+            df = self.rate
+        def func(x):
+            if x >= self.thresh:
+                return True
+            elif x < self.thresh:
+                return False
+            else:
+                return x       
+        self.wet = df.apply(lambda x: x.apply(lambda x: func(x)))
         
     def plot_prob_wet(self, time_step=None, interval=None, base=0,
                      gage=None, m=None, h=None, save=True, map=False):
             
-        if time_step is not None:
-            self.wet = self.wet.resample(time_step, axis=get_index(self.wet, 'date_time')[0],
-                                         how='sum', label='right', closed='right')>=1
-        else:
-            self.wet = self.wet
-            time_step = self.freq
-
-        kwargs = dict(interval=interval, gage=gage, m=m, h=h)
-        self.gb = choose_group(self.wet, **kwargs)
-        self.df = df_from_gb(self.gb, **kwargs)
+        kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
+        self.gb = choose_group(self.rate, wet=True, **kwargs)
+        self.df = gb_to_prob_wet(self.gb, self.thresh, **kwargs)
+        
+        if time_step is None:
+            time_step =self.freq
+            kwargs.update(dict(time_step = self.freq))
         
         self.df.plot(kind='bar', figsize=(16,6))
         plt.ylabel("Probability of wet {ts}".format(ts=time_step))
-        title = create_title('Probability of wet {ts}',self.year, time_step=time_step, **kwargs)
+        title = create_title('Probability of wet {ts}',self.year, **kwargs)
         plt.title(title)
         if save:
             plt.savefig(self.save_path+title+'.jpg')
@@ -212,7 +217,7 @@ class Rain:
             elif interval is 'diurnal':
                 if name%2 == 1:  # if the hour is odd
                     continue
-            df = df[df >= self.thresh*self.per_hour].dropna()  # only keep wet days
+            df = df[df >= self.thresh].dropna()  # only keep wet days
             wet_rates.update({name:df.values})
         
         if time_step is None:
@@ -245,7 +250,7 @@ class Rain:
             else:
                 if name%4 != 0:  # if the hour isn't divisible by 4
                     continue
-            df = df[df >= self.thresh*self.per_hour].dropna()  # only keep wet days
+            df = df[df >= self.thresh].dropna()  # only keep wet days
             foo.append(df.quantile(np.arange(0,1.001,.001)))
             labels.append(name)
         quan = pd.DataFrame(foo).transpose()
@@ -270,16 +275,11 @@ class Rain:
         ax1.set_ylabel('Rain Rate (mm/hr)') 
               
     def get_wettest(self, time_step=None, path='SVG_data'):
-        if time_step is None:
-            time_step = self.freq
-
-        df = self.rate.resample(time_step, **get_resample_kwargs(self.rate)).dropna(how='all')
-        
-        if not hasattr(self,'thresh'):
-            self.get_thresh()
-
-        wet = df >= self.thresh*self.per_hour
-        df = df.drop(wet[wet.sum(axis=1) != self.ngages].index)
+        if time_step is not None:
+            df = self.rate.resample(time_step, axis=get_index(self.wet, 'date_time')[0],
+                                    how='sum', label='right', closed='right')
+            self.get_wet(df)
+        df = df[self.wet.sum(axis=get_index(self.wet, 'RG')[0] == self.ngages)]
         wettest = df.sum(axis=1).sort_values()
 
         list_of_series = []
@@ -326,10 +326,7 @@ class Rain:
             time_step = self.freq
         df = self.rate[storm_day].resample(time_step, **get_resample_kwargs(self.rate)).dropna(how='all')
 
-        if not hasattr(self,'thresh'):
-            self.get_thresh()
-
-        wet = df >= self.thresh*self.per_hour
+        wet = df >= self.thresh
         df = df.drop(wet[wet.sum(axis=1) <= 18].index) # nCr for 18C2 produces just 5 bins of 30, so this is the fewest for good results
         storm = df.transpose()
 
