@@ -47,6 +47,11 @@ def get_resample_kwargs(df):
 def get_prob_wet(df, a, thresh):
     wet = None
     d = {}
+    if a is None:
+        w = df[df >= thresh].count()
+        nonnull = df.count()
+        wet =  w/float(nonnull)
+        return wet
     for i in df.axes[a]:
         w = df[i][df[i]>= thresh].count()
         nonnull = df[i].count()
@@ -169,7 +174,7 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
         df = df.resample(time_step, base=base, **resample_kwargs)
         
     date_time = get_index(df, 'date_time')[1]
-    a = get_index(df, index='RG')[0]
+    a = get_index(df, 'RG')[0]
     
     # Choose along gage axis
     if gage is None:
@@ -179,7 +184,10 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
             df = df.loc[:,gage]
         except: 
             df = df.loc[:,:,gage]
-    a, RG = get_index(df, index='RG')
+        try:
+            a, RG = get_index(df, index='RG')
+        except:
+            pass
     
     # Group along time axis
     if interval is 'seasonal' and h is None:
@@ -227,15 +235,30 @@ def gb_to_df(gb, time_step=None, base=0, interval=None, gage=None, m=None, h=Non
 def gb_to_prob_wet(gb, thresh, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
     if interval is None:
         wet = get_prob_wet(gb[0][1], 0, thresh)
+        return wet
+    elif gage is not None:
+        a = get_index(gb.get_group(gb.keys[0]), 'RG')[0]
+    elif gage is None:
+        if type(gb.get_group(gb.keys[0])) is pd.DataFrame:
+            a = 1
+        else:
+            a = None
+    d = {}
+    for name, df in gb:
+        d.update({name: get_prob_wet(df, a, thresh)})
+    if type(d.values()[0]) is float or type(d.values()[0]) is np.float64:
+        wet = pd.Series(d)
+    elif type(d.values()[0]) is pd.Series:
+        wet = pd.DataFrame(d)
+    elif type(d.values()[0]) is pd.DataFrame:
+        wet = pd.Panel(d)
     else:
-        a = get_index(gb.get_group(1), 'RG')[0]
-        d = {}
-        for name, df in gb:
-            d.update({name: get_prob_wet(df, a, thresh)})
+        wet = d
+    if interval is not None:
         try:
-            wet = pd.DataFrame(d)
+            wet = wet.transpose()
         except:
-            wet = pd.Panel(d)
+            pass
     return wet
 
 def map_rain(df, save_path='.', title='rain_map', save=True):

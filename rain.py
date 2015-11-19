@@ -154,11 +154,8 @@ class Rain:
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, **kwargs)
         self.df = gb_to_df(self.gb, **kwargs)
-                
-        if time_step is None:
-            kwargs.update(dict(time_step=self.freq))
         
-        title = create_title('{ts} Rain Rate', self.year, **kwargs)
+        title = create_title('Mean Rain Rate', self.year, **kwargs)
         self.df.plot(kind='bar', figsize=(16,6), title=title)
         plt.ylabel('Mean Rain Rate (mm/hr)')
         if save:
@@ -358,8 +355,12 @@ class RadarGage(Rain):
         self.rate = self.rate.loc[:, self.rate.gage.mean(axis=1).notnull()].loc[:, self.rate.radar.mean(axis=1).notnull()]
     
     def plot_correlation(self, time_step=None, base=0, save=True):
-        p = self.rate.resample(time_step, base=base, **get_resample_kwargs(self.rate))
-        self.last = p
+        if time_step is None:
+            p = self.rate
+            time_step = self.freq
+        else:
+            p = self.rate.resample(time_step, base=base, **get_resample_kwargs(self.rate))
+        self.df = p
         p = p.to_frame().dropna(how='any')
 
         plt.figure(figsize=(8,8))
