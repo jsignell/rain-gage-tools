@@ -190,31 +190,39 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
             pass
     
     # Group along time axis
-    if interval is 'seasonal' and h is None:
+    if interval is 'seasonal':
+        if h is not None:
+            gb = df.groupby(date_time.hour)
+            if type(h) is list or type(h) is tuple:
+                df = pd.concat([gb.get_group(n) for n in h])
+            else:
+                df = gb.get_group(h)
+            date_time = get_index(df, 'date_time')[1]
         gb = df.groupby(date_time.month)
-    elif interval is 'diurnal' and m is None:
-        gb = df.groupby(date_time.hour)
-     
-    elif interval is 'diurnal' and m is not None:
-        gb = df.groupby(date_time.month)
-        if type(m) is list or type(m) is tuple:
-            df = pd.concat([gb.get_group(n) for n in m])
-        else:
-            df = gb.get_group(m)
-        date_time = get_index(df, 'date_time')[1]
-        gb = df.groupby(date_time.hour)
+        if m is not None:
+            try:
+                gb = [(m, gb.get_group(m))]
+            except:
+                gb = [(month, gb.get_group(month)) for month in m]
     
-    elif interval is 'seasonal' and h is not None:
+    elif interval is 'diurnal':    
+        if m is not None:
+            gb = df.groupby(date_time.month)
+            if type(m) is list or type(m) is tuple:
+                df = pd.concat([gb.get_group(n) for n in m])
+            else:
+                df = gb.get_group(m)
+            date_time = get_index(df, 'date_time')[1]
         gb = df.groupby(date_time.hour)
-        if type(h) is list or type(h) is tuple:
-            df = pd.concat([gb.get_group(n) for n in h])
-        else:
-            df = gb.get_group(h)
-        date_time = get_index(df, 'date_time')[1]
-        gb = df.groupby(date_time.month)
+        if h is not None:
+            try:
+                gb = [(h, gb.get_group(h))]
+            except:
+                gb = [(hour, gb.get_group(hour)) for hour in h]
+    
     else:
         gb = [('all',df)]
-    
+
     return gb
 
 def gb_to_df(gb, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
@@ -234,12 +242,19 @@ def gb_to_df(gb, time_step=None, base=0, interval=None, gage=None, m=None, h=Non
 
 def gb_to_prob_wet(gb, thresh, time_step=None, base=0, interval=None, gage=None, m=None, h=None):
     if interval is None:
-        wet = get_prob_wet(gb[0][1], 0, thresh)
+        try:
+            wet = get_prob_wet(gb[0][1], 0, thresh)
+        except:
+            wet = get_prob_wet(gb[0][1], 1, thresh)
         return wet
-    elif gage is not None:
-        a = get_index(gb.get_group(gb.keys[0]), 'RG')[0]
+    try:
+        indicator = gb.get_group(gb.keys[0])
+    except:
+        indicator = gb[0][1]
+    if gage is not None:
+        a = get_index(indicator, 'RG')[0]
     elif gage is None:
-        if type(gb.get_group(gb.keys[0])) is pd.DataFrame:
+        if type(indicator) is pd.DataFrame:
             a = 1
         else:
             a = None
@@ -310,9 +325,9 @@ def create_title(title, year=None, time_step=None, base=0, interval=None,
         title = title + ' at '+ gage
     
     if m is not None:
-        title = title + ' for Month {m} of'.format(m=m)
+        title = title + ' for Month {mo} of'.format(mo=m)
     elif h is not None:
-        title = title + ' for Hour {h} of'.format(h=h) 
+        title = title + ' for Hour {ho} of'.format(ho=h) 
     elif interval is 'seasonal':
         title = title + ' for Months of'
     elif interval is 'diurnal':

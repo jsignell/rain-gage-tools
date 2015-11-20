@@ -161,12 +161,12 @@ class Rain:
         if save:
             plt.savefig(self.save_path+title+'.jpg')
         if map:
-            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title)
+            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save)
             
     def reset_thresh(self): 
         self.thresh = (min([i for i in self.df[self.df.columns[0]] if i > 0])-.001) * self.per_hour
 
-    def get_wet(self, df):
+    def get_wet_bool(self, df):
         if df is None:
             df = self.rate
         def func(x):
@@ -177,7 +177,11 @@ class Rain:
             else:
                 return x       
         self.wet = df.apply(lambda x: x.apply(lambda x: func(x)))
-        
+    
+    def get_wet(self, df):
+        self.wet = self.rate >= self.thresh
+        self.wet[self.rate.isnull()] = np.NaN
+   
     def plot_prob_wet(self, time_step=None, interval=None, base=0,
                      gage=None, m=None, h=None, save=True, map=False):
             
@@ -186,42 +190,46 @@ class Rain:
         self.df = gb_to_prob_wet(self.gb, self.thresh, **kwargs)
         
         if time_step is None:
-            time_step =self.freq
+            time_step = self.freq
             kwargs.update(dict(time_step = self.freq))
         
         self.df.plot(kind='bar', figsize=(16,6))
         plt.ylabel("Probability of wet {ts}".format(ts=time_step))
         title = create_title('Probability of wet {ts}',self.year, **kwargs)
+        title = title + ' (threshold={t}mm)'.format(t=self.thresh/4)
         plt.title(title)
         if save:
             plt.savefig(self.save_path+title+'.jpg')
         if map:
-            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title)
+            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
-                      gage=None, m=None, h=None, save=True):
+                      gage=None, m=None, h=None, save=True, sort_by_type=False):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         
         self.group = choose_group(self.rate, **kwargs)
-        wet_rates = {}
+        wet_rates = []
         for name, df in self.group:
-            if interval is 'seasonal' and m is not None:
-                if name not in m:
-                    continue
-            if interval is 'diurnal' and h is not None:
-                if name not in h:
-                    continue
-            elif interval is 'diurnal':
-                if name%2 == 1:  # if the hour is odd
-                    continue
-            df = df[df >= self.thresh].dropna()  # only keep wet days
-            wet_rates.update({name:df.values})
-        
+            if len(df.columns) > 1:
+                df = df[df>=self.thresh]
+                try:
+                    df = df.add_suffix(' '+'{0:0=2d}'.format(name))
+                except:
+                    pass
+                wet_rates.append((df.columns[0], df[df.columns[0]].dropna().values))
+                wet_rates.append((df.columns[1], df[df.columns[1]].dropna().values))
+            else:
+                df = df[df >= self.thresh].dropna(how='all')  # only keep wet days
+                wet_rates.append((name, df.values))
+        if sort_by_type:
+            wet_rates.sort()
+        while len(wet_rates) > 12:
+            wet_rates = [wet_rates[k] for k in range(0,len(wet_rates),2)]
         if time_step is None:
             kwargs.update(dict(time_step=self.freq))
-        
-        fig = plt.figure(figsize=(len(wet_rates)*4/3,4))
-        plt.boxplot(wet_rates.values(), sym='', whis=[10,90], meanline=True, labels=wet_rates.keys())
+        self.wet_rates = wet_rates
+        fig = plt.figure(figsize=(max(len(wet_rates)*4/3, 4),4))
+        plt.boxplot([w[1] for w in wet_rates], sym='', whis=[10,90], meanline=True, labels=[w[0] for w in wet_rates])
         plt.yscale('linear')
         plt.ylabel('Rain Rate (mm/hr)')
         title = '{ts} Rain Rate Distribution (excluding dry {ts})'
@@ -231,23 +239,14 @@ class Rain:
             plt.savefig(self.save_path+title+'.jpg')
 
     def plot_distribution(self, time_step=None, base=0, interval=None, 
-                         gage=None, m=None, h=None, look_closer=None, save=True):
+                         gage=None, m=None, h=None, save=True):
 
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
-        self.gb = choose_group(self.df,**kwargs)
+        self.gb = choose_group(self.rate,**kwargs)
         labels = []
         foo = []
         for name, df in self.gb:
-            if interval is 'seasonal' and m is not None:
-                if name not in m:
-                    continue
-            if interval is 'diurnal' and h is not None:
-                if name not in h:
-                    continue
-            else:
-                if name%4 != 0:  # if the hour isn't divisible by 4
-                    continue
-            df = df[df >= self.thresh].dropna()  # only keep wet days
+            df = df[df >= self.thresh] # only keep wet days
             foo.append(df.quantile(np.arange(0,1.001,.001)))
             labels.append(name)
         quan = pd.DataFrame(foo).transpose()
@@ -259,6 +258,7 @@ class Rain:
         
         fig = plt.figure(figsize=(16,8))
         ax = fig.add_subplot(211)
+        
         self.quantiles.plot(logy=True,ax=ax)
         ax.set_ylabel('Rain Rate (mm/hr)') 
         title = '{ts} Rain Rate Distribution (excluding dry {ts})'
