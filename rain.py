@@ -1,11 +1,4 @@
-from math import cos, pi
-import string
-import posixpath
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-plt.style.use('ggplot')
-
+from __init__ import *
 from common import *
 
 class Rain:
@@ -91,7 +84,7 @@ class Rain:
             ll_file = self.ll_file
         if path is None:
             path = self.path
-        ll = pd.read_csv(path+ll_file, sep=',', header=None, names=cols)
+        ll = pd.read_csv(path+ll_file, sep=',', header=None, names=cols) 
         if 'RG' not in cols:
             ll['RG'] = ll.index + 1
         ll['RG'] = 'RG' + ll['RG'].apply(str)
@@ -116,7 +109,7 @@ class Rain:
 
         title = 'Distances between gages (angle of {angle} from horizontal)'
 
-        plt.figure(figsize=(10,8))
+        plt.figure(figsize=(6,6))
         plt.scatter(x_dist,y_dist, s=5)
         plt.ylabel('Y distance (km)')
         plt.xlabel('X distance (km)')
@@ -150,18 +143,18 @@ class Rain:
         self.df.columns.name = 'RG'
     
     def plot_rate(self, time_step=None, base=0, interval=None,
-                  gage=None, m=None, h=None, save=True, map=False):
+                  gage=None, m=None, h=None, save=True, map=False, sharec=False):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, **kwargs)
         self.df = gb_to_df(self.gb, **kwargs)
         
         title = create_title('Mean Rain Rate', self.year, **kwargs)
-        self.df.plot(kind='bar', figsize=(16,6), title=title)
+        self.df.plot(kind='bar', figsize=(16, 6), title=title)
         plt.ylabel('Mean Rain Rate (mm/hr)')
         if save:
             plt.savefig(self.save_path+title+'.jpg')
         if map:
-            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save)
+            return map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, sharec=sharec)
             
     def reset_thresh(self): 
         self.thresh = (min([i for i in self.df[self.df.columns[0]] if i > 0])-.001) * self.per_hour
@@ -183,7 +176,7 @@ class Rain:
         self.wet[self.rate.isnull()] = np.NaN
    
     def plot_prob_wet(self, time_step=None, interval=None, base=0,
-                     gage=None, m=None, h=None, save=True, map=False):
+                      gage=None, m=None, h=None, save=True, map=False, sharec=False):
             
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, wet=True, **kwargs)
@@ -201,7 +194,7 @@ class Rain:
         if save:
             plt.savefig(self.save_path+title+'.jpg')
         if map:
-            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save)
+            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, sharec=sharec)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
                       gage=None, m=None, h=None, save=True, sort_by_type=False):

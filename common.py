@@ -2,10 +2,7 @@
 Common methods to be used by core objects
 
 """
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-plt.style.use('ggplot')
+from __init__ import *
 
 def get_index(df, index='date_time'):
     """
@@ -276,7 +273,7 @@ def gb_to_prob_wet(gb, thresh, time_step=None, base=0, interval=None, gage=None,
             pass
     return wet
 
-def map_rain(df, save_path='.', title='rain_map', save=True):
+def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True):
     """
     Map rainfall at each gage location 
     
@@ -290,19 +287,52 @@ def map_rain(df, save_path='.', title='rain_map', save=True):
     """
     df = df[df.lat > -200]
     cols = [col for col in df.columns if col not in ('RG','lat','lon','X','Y')]
-    
-    ncols = 2
-    nrows = len(cols)/ncols
+    if len(cols) == 1:
+        ncols = 1
+        nrows = 1
+    else:
+        ncols = 2
+        nrows = int(np.ceil(len(cols)/ncols))
    
-    fig, axes = plt.subplots(nrows, ncols, figsize=(16, 5*nrows), sharey=True)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
+    if sharec:
+        vmax = min(100, df[df.columns[5:]].max().max())
+        vmin = max(0, df[df.columns[5:]].min().min())
+        
     fig.suptitle(title, fontsize=18)
     fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
-
-    for col, ax in zip(cols, axes.reshape(1, len(cols))[0]):
-        df.plot(kind='scatter', x='lon', y='lat', c=col, s=100, cmap='gist_earth_r', ax=ax)
+    
+    try:
+        axes = axes.reshape(-1)
+    except:
+        axes = [axes]
+    for col, ax in zip(cols, axes):
+        if sharec:
+            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap='gist_earth_r', vmin=vmin, vmax=vmax)
+        else:
+            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap='gist_earth_r')
+            fig.colorbar(scat, ax=ax)
         ax.set_title(col)
+        #tooltip = plugins.PointLabelTooltip(scat, labels=list(df.RG.values))
+        #plugins.clear(fig)  # clear all plugins from the figure
+
+        #plugins.connect(fig, plugins.Reset(), plugins.Zoom(), tooltip)
+    if sharec:
+        fig.colorbar(scat, ax=list(axes))
     if save:
         plt.savefig(save_path+title+'.jpg')
+
+def movie(df):
+    fig, ax = plt.subplots(1,1,figsize= (10,6))
+    vmax = min(100, df[df.columns[5:]].max().max())
+    sc = ax.scatter(x=df['lon'], y=df['lat'], cmap='gist_earth_r', c=df['lat']*0, vmin=0, vmax=vmax, s=100)
+    fig.colorbar(sc)
+
+    def animate(i):
+        ax.set_title(df[[i+5]].columns[0])
+        scat = ax.scatter(x=df['lon'], y=df['lat'], cmap='gist_earth_r', c=df[[i+5]], vmin=0, vmax=vmax, s=100)
+
+    return animation.FuncAnimation(fig, animate, frames=len(df.columns)-5, interval=300, blit=True)
 
 def create_title(title, year=None, time_step=None, base=0, interval=None,
                  gage=None, m=None, h=None):
