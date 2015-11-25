@@ -1,7 +1,9 @@
 get_iSVG <- function(SVG_data, i, target_np=30, alpha=0, tol.hor=90, 
-                     last_max=TRUE, max_bnd=FALSE, cressie=FALSE){
+                     last_max=FALSE, max_bnd=FALSE, cressie=FALSE){
     
     library(reshape2)
+    library(gstat)
+    library(sp)
 
     j <- SVG_data[c(1:5,i)] 
     j = j[complete.cases(j[,]),]
@@ -15,8 +17,7 @@ get_iSVG <- function(SVG_data, i, target_np=30, alpha=0, tol.hor=90,
     if(max_bnd){l = l[l<max_bnd]}
     index = target_np*2*c(1:(length(l)/(target_np*2)))
     bnd = l[index]
-    if(max(l) > max(bnd)){bnd = c(bnd, tail(l, 1))}
-    print(bnd)
+    if(max(l) > max(bnd)){bnd = c(bnd,max(l)+10)}
 
     v = variogram(j[[1]]~1, j, boundaries=bnd, alpha=alpha, tol.hor=tol.hor, cressie=cressie)
     if(last_max){
@@ -25,14 +26,13 @@ get_iSVG <- function(SVG_data, i, target_np=30, alpha=0, tol.hor=90,
             }
         }
                       
-    if(min(v$np)<25){
+    if(mean(v$np)<25){
         foo = cumsum(v$np)
         bnd=0
         while(max(foo)>=30){
             bnd = c(bnd,v$dist[foo>=30][1])
             foo = foo-30
         }
-        bnd = c(bnd, 60)
         if(length(bnd)<3){return('')}
         v = variogram(j[[1]]~1, j, boundaries=bnd, alpha=alpha, tol.hor=tol.hor, cressie=cressie)
         if(last_max){

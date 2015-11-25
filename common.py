@@ -171,7 +171,7 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
         df = df.resample(time_step, base=base, **resample_kwargs)
         
     date_time = get_index(df, 'date_time')[1]
-    a = get_index(df, 'RG')[0]
+    a, RG = get_index(df, 'RG')
     
     # Choose along gage axis
     if gage is None:
@@ -185,7 +185,7 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
             a, RG = get_index(df, index='RG')
         except:
             pass
-    
+   
     # Group along time axis
     if interval is 'seasonal':
         if h is not None:

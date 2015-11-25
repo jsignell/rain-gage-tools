@@ -79,6 +79,9 @@ class Rain:
         print self.thresh
         print self.ll_file
     
+    def list_gages(self):
+        return list(get_index(self.rate, 'RG')[1])
+    
     def get_ll(self, cols=['RG', 'lon', 'lat'], path=None, ll_file=None):
         if ll_file is None:
             ll_file = self.ll_file
@@ -143,21 +146,45 @@ class Rain:
         self.df.columns.name = 'RG'
     
     def plot_rate(self, time_step=None, base=0, interval=None,
-                  gage=None, m=None, h=None, save=True, map=False, sharec=False):
+                  gage=None, m=None, h=None,
+                  save=True, bar=True, color=None, map=False, sharec=False):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, **kwargs)
         self.df = gb_to_df(self.gb, **kwargs)
         
         title = create_title('Mean Rain Rate', self.year, **kwargs)
-        self.df.plot(kind='bar', figsize=(16, 6), title=title)
-        plt.ylabel('Mean Rain Rate (mm/hr)')
-        if save:
-            plt.savefig(self.save_path+title+'.jpg')
+        if bar:
+            self.df.plot(kind='bar', figsize=(16, 6), color=color, title=title)
+            plt.ylabel('Mean Rain Rate (mm/hr)')
+            if save:
+                plt.savefig(self.save_path+title+'.jpg')
         if map:
+            try:
+                if sharec:
+                    title = title.replace('at listed gages', 'on same scale')
+                else:
+                    title = title.replace('at listed gages', 'on differing scales')
+            except:
+                pass
             return map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, sharec=sharec)
             
+    def reset_rate(self, time_step=None):
+        if time_step is None:
+            time_step = self.freq
+        else:
+            self.freq = time_step
+        self.rate = self.rate.resample(time_step, **get_resample_kwargs(self.rate))
+        self.reset_thresh()
+        if 'min' in self.freq:
+            try:
+                self.per_hour = 60/int(self.freq.strip('min'))
+            except:
+                print('choose a new Rain.per_hour value')
+        else:
+            print('choose a new Rain.per_hour value')
+
     def reset_thresh(self): 
-        self.thresh = (min([i for i in self.df[self.df.columns[0]] if i > 0])-.001) * self.per_hour
+        self.thresh = min([i for i in self.rate[self.rate.columns[0]] if i > 0])-.001
 
     def get_wet_bool(self, df):
         if df is None:
@@ -176,7 +203,8 @@ class Rain:
         self.wet[self.rate.isnull()] = np.NaN
    
     def plot_prob_wet(self, time_step=None, interval=None, base=0,
-                      gage=None, m=None, h=None, save=True, map=False, sharec=False):
+                      gage=None, m=None, h=None, title=None,
+                      save=True, bar=True, color=None, map=False, sharec=False):
             
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, wet=True, **kwargs)
@@ -186,14 +214,23 @@ class Rain:
             time_step = self.freq
             kwargs.update(dict(time_step = self.freq))
         
-        self.df.plot(kind='bar', figsize=(16,6))
-        plt.ylabel("Probability of wet {ts}".format(ts=time_step))
-        title = create_title('Probability of wet {ts}',self.year, **kwargs)
-        title = title + ' (threshold={t}mm)'.format(t=self.thresh/4)
-        plt.title(title)
-        if save:
-            plt.savefig(self.save_path+title+'.jpg')
+        if title is None:
+            title = create_title('Probability of wet {ts}', self.year, **kwargs)
+            title = title + ' (threshold={t}mm)'.format(t=self.thresh/self.per_hour)
+
+        if bar:
+            self.df.plot(kind='bar', figsize=(16,6), color=color, title=title)
+            plt.ylabel("Probability of wet {ts}".format(ts=time_step))
+            if save:
+                plt.savefig(self.save_path+title+'.jpg')
         if map:
+            try:
+                if sharec:
+                    title = title.replace('at listed gages', 'on same scale')
+                else:
+                    title = title.replace('at listed gages', 'on differing scales')
+            except:
+                pass
             map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, sharec=sharec)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
@@ -263,24 +300,6 @@ class Rain:
         ax1 = fig.add_subplot(212)
         self.quantiles.plot(xlim=(0.9,1),ax=ax1, legend=None)
         ax1.set_ylabel('Rain Rate (mm/hr)') 
-              
-    def get_wettest(self, time_step=None, path='SVG_data'):
-        if time_step is not None:
-            df = self.rate.resample(time_step, axis=get_index(self.wet, 'date_time')[0],
-                                    how='sum', label='right', closed='right')
-            self.get_wet(df)
-        df = df[self.wet.sum(axis=get_index(self.wet, 'RG')[0] == self.ngages)]
-        wettest = df.sum(axis=1).sort_values()
-
-        list_of_series = []
-        for t in wettest.tail(5).index:
-            list_of_series.append(df.loc[t])
-        
-        if not hasattr(self,'ll'):
-            self.get_ll()
- 
-        self.wettest = self.ll.join(list_of_series)
-        self.wettest.to_csv(path, index=False)
     
     def get_rainiest(self, n, unweighted=False):
         largest = None
@@ -313,23 +332,28 @@ class Rain:
     
     def get_storm(self, storm_day='2013-08-13', time_step=None, path='SVG_data'):
         if time_step is None:
+            df = self.rate[storm_day]
             time_step = self.freq
-        df = self.rate[storm_day].resample(time_step, **get_resample_kwargs(self.rate)).dropna(how='all')
-
+        else:
+            df = self.rate[storm_day].resample(time_step, **get_resample_kwargs(self.rate)).dropna(how='all')
+        
+        # nCr for 18C2 produces just 5 bins of 30, so this is the fewest for good results
         wet = df >= self.thresh
-        df = df.drop(wet[wet.sum(axis=1) <= 18].index) # nCr for 18C2 produces just 5 bins of 30, so this is the fewest for good results
-        storm = df.transpose()
+        df = df[wet.sum(axis=1) > 18] 
 
         if not hasattr(self,'ll'):
             self.get_ll()
 
-        storm = self.ll.join(storm)
+        storm = self.ll.join(df.transpose())
         storm = storm[storm.lat > -200]
-        self.storm = storm[:]
+
         for col in storm:
             if col not in self.ll.columns:
                 storm[col] = storm[col].replace(0, np.nan)
         storm.to_csv(path, index=False)
+        
+        storm = self.ll.join(df.transpose())
+        self.storm = storm[storm.lat > -200]
 
 
 class RadarGage(Rain):
