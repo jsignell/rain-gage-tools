@@ -99,23 +99,37 @@ class Rain:
         ll['Y'] = ll['Y'] - min(ll['Y'])
         self.ll = ll
     
-    def plot_ll(self, save=True):
+    def plot_ll(self, title=None, save=True):
         df = self.ll[self.ll.lat > -200]
+        if hasattr(self, 'df_corr'):
+            df_corr = self.df_corr.loc[df.index, df.index]
+        else:
+            df_corr = None
         x_dist=[]
         y_dist=[]
-        for i, val in enumerate(df.X):
+        dist_corr = []
+        for i, val in enumerate(df.X[:-1]):
             a = (val-df.X[(i+1):]).reshape(-1)
             x_dist = np.concatenate((x_dist, a))
-        for i, val in enumerate(df.Y):
+        for i, val in enumerate(df.Y[:-1]):
             a = (val-df.Y[(i+1):]).reshape(-1)
             y_dist = np.concatenate((y_dist, a))
-
-        title = 'Distances between gages (angle of {angle} from horizontal)'
-
-        plt.figure(figsize=(6,6))
-        plt.scatter(x_dist,y_dist, s=5)
-        plt.ylabel('Y distance (km)')
-        plt.xlabel('X distance (km)')
+            if df_corr is not None:
+                c = (df_corr.loc[df.index[i], df.index[i+1]:df.index[-1]]).reshape(-1)
+                dist_corr = np.concatenate((dist_corr, c))
+        if title is None:
+            title = 'Distances between gages ({angle} from horizontal)'
+        
+        if df_corr is None:
+            fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(6,6))
+            axes = [axes]
+            scat = axes[0].scatter(x_dist,y_dist, s=5)
+        else:
+            title = title + ' with color representing corr coef'
+            fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8,12))
+            scat = axes[0].scatter(x_dist,y_dist, s=5, c=dist_corr, cmap='gist_earth_r')
+        axes[0].set_ylabel('Y distance (km)')
+        axes[0].set_xlabel('X distance (km)')
 
         # determine best fit line
         par = np.polyfit(x_dist, y_dist, 1, full=True)
@@ -124,9 +138,18 @@ class Rain:
         intercept=par[0][1]
         xl = [min(x_dist), max(x_dist)]
         yl = [slope*xx + intercept for xx in xl]
-        plt.plot(xl, yl, '-r')
+        axes[0].plot(xl, yl, '-r')
 
-        plt.title(title.format(angle=round(slope*90)))
+        axes[0].set_title(title.format(angle=round(slope*90)))
+        
+        if df_corr is not None:
+            plt.colorbar(scat, ax=axes[0])
+        
+            axes[1].set_title('Spatial correlation function of rain rate')
+            axes[1].scatter((x_dist**2+y_dist**2)**.5, dist_corr, c=dist_corr, cmap='gist_earth_r')
+            axes[1].set_ylabel('Correlation coefficient')
+            axes[1].set_xlabel('Distance between gages (km)')
+
         if save:
             plt.savefig(self.save_path+'{title}.jpg'.format(title=title).format(angle=round(slope*90)))
     
@@ -145,6 +168,18 @@ class Rain:
                               date_parser=dateparse, index_col=[0])
         self.df.columns.name = 'RG'
     
+    def get_df_corr(self, df=None):
+        if df is None:
+            rate = self.rate
+        else:
+            rate = df
+        df = pd.DataFrame(index=rate.columns, columns=rate.columns)
+        for col in rate.columns:
+            for other_col in rate.columns:
+                cor = rate[col].corr(rate[other_col])
+                df.set_value(col, other_col, cor)
+        self.df_corr = df
+
     def plot_rate(self, time_step=None, base=0, interval=None,
                   gage=None, m=None, h=None,
                   save=True, bar=True, color=None, map=False, sharec=False):
@@ -301,7 +336,7 @@ class Rain:
         self.quantiles.plot(xlim=(0.9,1),ax=ax1, legend=None)
         ax1.set_ylabel('Rain Rate (mm/hr)') 
     
-    def get_rainiest(self, n, unweighted=False):
+    def get_rainiest(self, n, time_step='24H', base=12, unweighted=False):
         largest = None
         if not hasattr(self,'ll'):
             self.get_ll()
@@ -311,7 +346,7 @@ class Rain:
                 self.daily = unweighted_daily_mean(self.rate)
             largest = self.daily.dropna().sort_values().tail(n)
         
-        rainiest = self.rate.resample('24H', base=12, **get_resample_kwargs(self.rate))
+        rainiest = self.rate.resample(time_step, base=base, **get_resample_kwargs(self.rate))
         
         if type(rainiest) == pd.Panel:
             largest = rainiest.mean(axis=get_index(self.rate, 'RG')[0]).dropna(how='any').mean(axis=1).sort_values().tail(n)
@@ -371,7 +406,7 @@ class RadarGage(Rain):
     def get_nonan(self):
         self.rate = self.rate.loc[:, self.rate.gage.mean(axis=1).notnull()].loc[:, self.rate.radar.mean(axis=1).notnull()]
     
-    def plot_correlation(self, time_step=None, base=0, save=True):
+    def plot_correlation(self, time_step=None, base=0,  title=None, save=True):
         if time_step is None:
             p = self.rate
             time_step = self.freq
@@ -399,8 +434,9 @@ class RadarGage(Rain):
         if time_step is None:
             time_step = self.freq
         
-        title = 'Radar Rain Gage Correlation with R^2 = {R} for'.format(R=round(correlation**2, 2))
-        title = create_title('{ts} '+title, year=self.year, time_step=time_step)
+        if title is None:
+            title = 'Radar Rain Gage Correlation with R^2 = {R} for'.format(R=round(correlation**2, 2))
+            title = create_title('{ts} '+title, year=self.year, time_step=time_step)
         plt.title(title)
         if save:
             plt.savefig(self.save_path+title+'.jpg')
