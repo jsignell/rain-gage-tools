@@ -181,13 +181,17 @@ class Rain:
         self.df_corr = df
 
     def plot_rate(self, time_step=None, base=0, interval=None,
-                  gage=None, m=None, h=None,
+                  gage=None, m=None, h=None, df=None, title=None,
                   save=True, bar=True, color=None, map=False, sharec=False):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
-        self.gb = choose_group(self.rate, **kwargs)
+        if df:
+            rate = df
+        else:
+            rate = self.rate
+        self.gb = choose_group(rate, **kwargs)
         self.df = gb_to_df(self.gb, **kwargs)
-        
-        title = create_title('Mean Rain Rate', self.year, **kwargs)
+        if title is None:
+            title = create_title('Mean Rain Rate', self.year, **kwargs)
         if bar:
             self.df.plot(kind='bar', figsize=(16, 6), color=color, title=title)
             plt.ylabel('Mean Rain Rate (mm/hr)')

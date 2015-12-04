@@ -273,7 +273,7 @@ def gb_to_prob_wet(gb, thresh, time_step=None, base=0, interval=None, gage=None,
             pass
     return wet
 
-def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True):
+def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True, cmap='gist_earth_r'):
     """
     Map rainfall at each gage location 
     
@@ -296,8 +296,11 @@ def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True):
    
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
     if sharec:
-        vmax = min(100, df[df.columns[5:]].max().max())
-        vmin = max(0, df[df.columns[5:]].min().min())
+        try:
+            vmin, vmax = sharec
+        except:
+            vmax = min(100, df[df.columns[5:]].max().max())
+            vmin = max(0, df[df.columns[5:]].min().min())
         
     fig.suptitle(title, fontsize=18)
     fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
@@ -308,9 +311,9 @@ def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True):
         axes = [axes]
     for col, ax in zip(cols, axes):
         if sharec:
-            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap='gist_earth_r', vmin=vmin, vmax=vmax)
+            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap=cmap, vmin=vmin, vmax=vmax)
         else:
-            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap='gist_earth_r')
+            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap=cmap)
             fig.colorbar(scat, ax=ax)
         ax.set_title(col)
         #tooltip = plugins.PointLabelTooltip(scat, labels=list(df.RG.values))
