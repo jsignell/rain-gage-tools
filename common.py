@@ -273,7 +273,8 @@ def gb_to_prob_wet(gb, thresh, time_step=None, base=0, interval=None, gage=None,
             pass
     return wet
 
-def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True, cmap='gist_earth_r'):
+def map_rain(df, save_path='./', title='rain_map', sharec=False, save=True, cmap='gist_earth_r', 
+             top_to_bottom=False, hide_title=False):
     """
     Map rainfall at each gage location 
     
@@ -292,8 +293,9 @@ def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True, cmap=
         nrows = 1
     else:
         ncols = 2
-        nrows = int(np.ceil(len(cols)/ncols))
-   
+        nrows = int(np.ceil(len(cols)/float(ncols)))
+    if top_to_bottom:
+        nrows, ncols = ncols, nrows
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
     if sharec:
         try:
@@ -301,9 +303,9 @@ def map_rain(df, save_path='.', title='rain_map', sharec=False, save=True, cmap=
         except:
             vmax = min(100, df[df.columns[5:]].max().max())
             vmin = max(0, df[df.columns[5:]].min().min())
-        
-    fig.suptitle(title, fontsize=18)
-    fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
+    if not hide_title:    
+        fig.suptitle(title, fontsize=18)
+        fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
     
     try:
         axes = axes.reshape(-1)

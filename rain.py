@@ -4,14 +4,7 @@ from common import *
 class Rain:
     '''
     Base class for Rain files
-    '''
-    group_kwargs = dict(time_step=None, 
-                    base=0, 
-                    interval='seasonal',
-                    gage=None, 
-                    m=None, 
-                    h=None)
-    
+    '''  
     def __init__(self, df_file=None, path='.', year=None, name="Philadelphia_raingage_{YEAR}_NAN_filled.dat",
                  freq='15min', per_hour=4, ngages=24, units='mm', ll_file="RG_lon_lat.txt", save_path='.'):
         '''
@@ -141,6 +134,8 @@ class Rain:
         axes[0].plot(xl, yl, '-r')
 
         axes[0].set_title(title.format(angle=round(slope*90)))
+        s = 'y = {slope} * x + {intercept}'.format(slope=np.round(slope,1), intercept=np.round(intercept,1))
+        axes[0].annotate(s=s, xy=(.2,.8), xycoords='figure fraction')
         
         if df_corr is not None:
             plt.colorbar(scat, ax=axes[0])
@@ -182,7 +177,7 @@ class Rain:
 
     def plot_rate(self, time_step=None, base=0, interval=None,
                   gage=None, m=None, h=None, df=None, title=None,
-                  save=True, bar=True, color=None, map=False, sharec=False):
+                  save=True, bar=True, color=None, map=False, **map_kwargs):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         if df:
             rate = df
@@ -205,7 +200,7 @@ class Rain:
                     title = title.replace('at listed gages', 'on differing scales')
             except:
                 pass
-            return map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, sharec=sharec)
+            return map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, **map_kwargs)
             
     def reset_rate(self, time_step=None):
         if time_step is None:
@@ -243,7 +238,7 @@ class Rain:
    
     def plot_prob_wet(self, time_step=None, interval=None, base=0,
                       gage=None, m=None, h=None, title=None,
-                      save=True, bar=True, color=None, map=False, sharec=False):
+                      save=True, bar=True, color=None, map=False, **map_kwargs):
             
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, wet=True, **kwargs)
@@ -270,7 +265,7 @@ class Rain:
                     title = title.replace('at listed gages', 'on differing scales')
             except:
                 pass
-            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, sharec=sharec)
+            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, **map_kwargs)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
                       gage=None, m=None, h=None, save=True, sort_by_type=False):
@@ -410,8 +405,10 @@ class RadarGage(Rain):
     def get_nonan(self):
         self.rate = self.rate.loc[:, self.rate.gage.mean(axis=1).notnull()].loc[:, self.rate.radar.mean(axis=1).notnull()]
     
-    def plot_correlation(self, time_step=None, base=0,  title=None, save=True):
-        if time_step is None:
+    def plot_correlation(self, p=None, time_step=None, base=0,  title=None, save=True):
+        if p is not None:
+            p = p
+        elif time_step is None:
             p = self.rate
             time_step = self.freq
         else:
