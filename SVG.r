@@ -1,4 +1,37 @@
-get_iSVG <- function(SVG_data, i, target_np=30, alpha=0, tol.hor=90, 
+get_krige <- function(SVG_data, psill, model, rng){
+    library(gstat)
+    library(sp)
+    
+    j <- SVG_data[c(4,5,6)]
+    coordinates(j) = ~X+Y
+    
+    x <- seq(from=0,to=70,by=5)
+    y <- seq(from=0,to=50,by=5)
+    DE_gridded <- data.frame(cbind(rep(x,length(y)), rep(y,each=length(x))))
+    gridded(DE_gridded) = ~X1+X2
+    
+    k <- krige(j[[1]]~1, j, DE_gridded, model=vgm(psill, model, rng))
+    k_flat = data.frame(x=k$X1, y=k$X2, var1.pred=k$var1.pred, var1.var=k$var1.var)
+    
+    spplot(k['var1.pred'], main='ordinary kriging predictions')
+    spplot(k['var1.var'], main='ordinary kriging variance')
+    
+    return(k_flat)
+    }
+
+get_variogram <- function(SVG_data){
+    library(reshape2)
+    library(gstat)
+    library(sp)
+    
+    j <- SVG_data[c(4,5,6)]
+    coordinates(j) = ~X+Y
+    v = variogram(j[[1]]~1, j)
+    
+    return(v)
+    }
+   
+get_iSVG <- function(SVG_data, i, target_np=30, alpha=0, tol.hor=90,
                      last_max=FALSE, max_bnd=FALSE, cressie=FALSE){
     
     library(reshape2)
@@ -17,9 +50,9 @@ get_iSVG <- function(SVG_data, i, target_np=30, alpha=0, tol.hor=90,
     if(max_bnd){l = l[l<max_bnd]}
     index = target_np*2*c(1:(length(l)/(target_np*2)))
     bnd = l[index]
-    if(max(l) > max(bnd)){bnd = c(bnd,max(l)+10)}
+    if(max(l) > max(bnd)){bnd = c(bnd,max(l))}
 
-    v = variogram(j[[1]]~1, j, boundaries=bnd, alpha=alpha, tol.hor=tol.hor, cressie=cressie)
+    v = variogram(j[[4]]~1, j, boundaries=bnd, alpha=alpha, tol.hor=tol.hor, cressie=cressie)
     if(last_max){
         for(i in (2:length(v$gamma))){
             if(v$gamma[i]< v$gamma[i-1]){v$gamma[i] <- v$gamma[i-1]}
@@ -79,7 +112,7 @@ get_SVG <- function(SVG_data, last_max=TRUE, cressie=FALSE){
 
 plot_SVG <- function(SVG_tab){
     
-    library(reshape)
+    library(reshape2)
     library(ggplot2)
     
     # reshape the data so that it can all be plotted on the same figure
