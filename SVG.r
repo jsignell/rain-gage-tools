@@ -1,12 +1,18 @@
-get_krige <- function(SVG_data, psill, model, rng){
+get_lowess <- function(x,y=Null, f=2/3){
+    l = lowess(x=x, y=y, f=f)
+    l = data.frame(l)
+    return(l)
+    }
+
+get_krige <- function(SVG_data, psill, model, rng, step=5){
     library(gstat)
     library(sp)
     
     j <- SVG_data[c(4,5,6)]
     coordinates(j) = ~X+Y
     
-    x <- seq(from=0,to=70,by=5)
-    y <- seq(from=0,to=50,by=5)
+    x <- seq(from=0,to=70,by=step)
+    y <- seq(from=0,to=50,by=step)
     DE_gridded <- data.frame(cbind(rep(x,length(y)), rep(y,each=length(x))))
     gridded(DE_gridded) = ~X1+X2
     
@@ -20,7 +26,6 @@ get_krige <- function(SVG_data, psill, model, rng){
     }
 
 get_variogram <- function(SVG_data){
-    library(reshape2)
     library(gstat)
     library(sp)
     
