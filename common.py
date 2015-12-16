@@ -327,15 +327,25 @@ def map_rain(df, save_path='./', title='rain_map', sharec=False, save=True, cmap
     if save:
         plt.savefig(save_path+title+'.jpg')
 
-def movie(df):
+def movie(df, vmin=None, vmax=None, cmap='gist_earth_r', latlon=True):
     fig, ax = plt.subplots(1,1,figsize= (10,6))
-    vmax = min(100, df[df.columns[5:]].max().max())
-    sc = ax.scatter(x=df['lon'], y=df['lat'], cmap='gist_earth_r', c=df['lat']*0, vmin=0, vmax=vmax, s=100)
+    if not vmin:
+        vmin=0
+    if not vmax:
+        vmax = min(100, df[df.columns[5:]].max().max())
+    if latlon:
+        x,y = df['lon'], df['lat']
+    else:
+        try:
+            x,y = df['X'], df['Y']
+        except:
+            x,y = df['x'], df['y']
+    sc = ax.scatter(x=x, y=y, cmap=cmap, c=y*0, vmin=vmin, vmax=vmax, s=100)
     fig.colorbar(sc)
 
     def animate(i):
         ax.set_title(df[[i+5]].columns[0])
-        scat = ax.scatter(x=df['lon'], y=df['lat'], cmap='gist_earth_r', c=df[[i+5]], vmin=0, vmax=vmax, s=100)
+        scat = ax.scatter(x=x, y=y, cmap=cmap, c=df[[i+5]], vmin=0, vmax=vmax, s=100)
 
     return animation.FuncAnimation(fig, animate, frames=len(df.columns)-5, interval=300, blit=True)
 
