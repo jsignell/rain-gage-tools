@@ -148,6 +148,8 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
     df : Dataframe object with times down the index and rain gages as the columns, or 
          a Panel object of two dataframes. 
     
+    **kwargs:
+    
     time_step : time string to use as method for resample: '15min', '1H', ...
     
     base : integer offest used in resample
@@ -159,6 +161,8 @@ def choose_group(df, time_step=None, base=0, interval=None, gage=None, m=None, h
     m : int or list of ints exclude all months but this/these
     
     h : int or list of ints exclude all hours but this/these
+    
+    wet : bool to indicate whether the accumutaion should be taken when resampling
 
     Returns
     -------
@@ -272,82 +276,6 @@ def gb_to_prob_wet(gb, thresh, time_step=None, base=0, interval=None, gage=None,
         except:
             pass
     return wet
-
-def map_rain(df, save_path='./', title='rain_map', sharec=False, save=True, cmap='gist_earth_r', 
-             top_to_bottom=False, hide_title=False):
-    """
-    Map rainfall at each gage location 
-    
-    Parameters
-    ----------
-    df : Dataframe object with locations as the index and values to map as the columns
-
-    Returns
-    -------
-    fig : map of rain intensity at each location
-    """
-    df = df[df.lat > -200]
-    cols = [col for col in df.columns if col not in ('RG','lat','lon','X','Y')]
-    if len(cols) == 1:
-        ncols = 1
-        nrows = 1
-    else:
-        ncols = 2
-        nrows = int(np.ceil(len(cols)/float(ncols)))
-    if top_to_bottom:
-        nrows, ncols = ncols, nrows
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
-    if sharec:
-        try:
-            vmin, vmax = sharec
-        except:
-            vmax = min(100, df[df.columns[5:]].max().max())
-            vmin = max(0, df[df.columns[5:]].min().min())
-    if not hide_title:    
-        fig.suptitle(title, fontsize=18)
-        fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
-    
-    try:
-        axes = axes.reshape(-1)
-    except:
-        axes = [axes]
-    for col, ax in zip(cols, axes):
-        if sharec:
-            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap=cmap, vmin=vmin, vmax=vmax)
-        else:
-            scat = ax.scatter(x=df['lon'], y=df['lat'], c=df[col], s=100, cmap=cmap)
-            fig.colorbar(scat, ax=ax)
-        ax.set_title(col)
-        #tooltip = plugins.PointLabelTooltip(scat, labels=list(df.RG.values))
-        #plugins.clear(fig)  # clear all plugins from the figure
-
-        #plugins.connect(fig, plugins.Reset(), plugins.Zoom(), tooltip)
-    if sharec:
-        fig.colorbar(scat, ax=list(axes))
-    if save:
-        plt.savefig(save_path+title+'.jpg')
-
-def movie(df, vmin=None, vmax=None, cmap='gist_earth_r', latlon=True):
-    fig, ax = plt.subplots(1,1,figsize= (10,6))
-    if not vmin:
-        vmin=0
-    if not vmax:
-        vmax = min(100, df[df.columns[5:]].max().max())
-    if latlon:
-        x,y = df['lon'], df['lat']
-    else:
-        try:
-            x,y = df['X'], df['Y']
-        except:
-            x,y = df['x'], df['y']
-    sc = ax.scatter(x=x, y=y, cmap=cmap, c=y*0, vmin=vmin, vmax=vmax, s=100)
-    fig.colorbar(sc)
-
-    def animate(i):
-        ax.set_title(df[[i+5]].columns[0])
-        scat = ax.scatter(x=x, y=y, cmap=cmap, c=df[[i+5]], vmin=0, vmax=vmax, s=100)
-
-    return animation.FuncAnimation(fig, animate, frames=len(df.columns)-5, interval=300, blit=True)
 
 def create_title(title, year=None, time_step=None, base=0, interval=None,
                  gage=None, m=None, h=None):

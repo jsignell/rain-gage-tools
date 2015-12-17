@@ -1,5 +1,6 @@
 from __init__ import *
 from common import *
+from tools import *
 
 class Rain:
     '''
@@ -401,6 +402,8 @@ class RadarGage(Rain):
         self.path = gage.path
         self.ll_file = gage.ll_file
         self.ll = gage.ll
+        if gage.per_hour != radar.per_hour:
+            print('gage and radar time steps don\'t match')
         
     def get_nonan(self):
         self.rate = self.rate.loc[:, self.rate.gage.mean(axis=1).notnull()].loc[:, self.rate.radar.mean(axis=1).notnull()]
