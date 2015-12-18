@@ -1,6 +1,6 @@
 from __init__ import *
 from common import *
-from tools import *
+from event import *
 
 class Rain:
     '''
@@ -201,7 +201,7 @@ class Rain:
                     title = title.replace('at listed gages', 'on differing scales')
             except:
                 pass
-            return map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, **map_kwargs)
+            Event(self.ll.join(self.df)).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
             
     def reset_rate(self, time_step=None):
         if time_step is None:
@@ -266,7 +266,7 @@ class Rain:
                     title = title.replace('at listed gages', 'on differing scales')
             except:
                 pass
-            map_rain(self.ll.join(self.df), self.save_path, 'Map of '+title, save=save, **map_kwargs)
+            Event(self.ll.join(self.df)).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
                       gage=None, m=None, h=None, save=True, sort_by_type=False):
@@ -390,6 +390,44 @@ class Rain:
         storm = self.ll.join(df.transpose())
         self.storm = storm[storm.lat > -200]
 
+    def get_max_lowess(self, df=None, interval='diurnal', f=1/4., example_plot=4):
+        from rpy2.robjects import pandas2ri
+        pandas2ri.activate()
+        rfuncs = import_r_tools(filename='SVG.r')
+        
+        if df is None:
+            df = self.rate
+        df = df.dropna(how='all')
+        if interval is 'diurnal':
+            tt = df.index.hour + df.index.minute/60.
+            amin, amax = 0, 24
+        if interval is 'seasonal':
+            tt = df.index.month + df.index.day/df.index.days_in_month.astype(float)
+            amin, amax = 1, 13
+        tod = df.set_index(tt)
+        tod = tod.sort_index()
+        d = {}
+        for i in tod.index.unique():
+            d.update({i: tod.loc[i].mean()})
+        a = pd.DataFrame(d).transpose()
+        b = pd.concat((a.set_index(a.index - (amax - amin)),
+                       a,
+                       a.set_index(a.index + (amax - amin))))
+        d={}
+        k=0
+        for col in b.columns:
+            foo = pandas2ri.ri2py(rfuncs.get_lowess(x=b.index, y=b[col], f=f))
+            foo = foo.set_index(foo.x)
+            foo = foo.loc[amin:amax]
+            d.update({col: foo.y.idxmax()})
+            k+=1
+            if k == example_plot:
+                fig, ax = plt.subplots()
+                ax.scatter(x=b.index, y=b[col])
+                ax.plot(foo.x, foo.y, c='r')
+                ax.set_xlim(amin, amax)
+        lm = pd.DataFrame({'lowess_max': pd.Series(d)})
+        return lm
 
 class RadarGage(Rain):
     

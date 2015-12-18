@@ -4,6 +4,16 @@ Common methods to be used by core objects
 """
 from __init__ import *
 
+
+def import_r_tools(filename='SVG.r'):
+    from rpy2.robjects import pandas2ri, r, globalenv
+    from rpy2.robjects.packages import STAP
+    pandas2ri.activate()
+    with open(filename, 'r') as f:
+        string = f.read()
+    rfuncs = STAP(string, "rfuncs")
+    return rfuncs
+
 def get_index(df, index='date_time'):
     """
     Find the axis of panel or dataframe with given name
