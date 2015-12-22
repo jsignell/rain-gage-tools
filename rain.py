@@ -89,8 +89,6 @@ class Rain:
             
         ll['Y'] = ll['lat']*110.574
         ll['X'] = ll['lon']*111.320*(ll['lat']*pi/180).apply(cos)
-        ll['X'] = ll['X'] - min(ll['X'])
-        ll['Y'] = ll['Y'] - min(ll['Y'])
         self.ll = ll
     
     def plot_ll(self, title=None, save=True):
