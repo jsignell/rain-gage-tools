@@ -145,7 +145,7 @@ class Rain:
             axes[1].set_xlabel('Distance between gages (km)')
 
         if save:
-            plt.savefig(self.save_path+'{title}.jpg'.format(title=title).format(angle=round(slope*90)))
+            plt.savefig(self.save_path+'{title}.png'.format(title=title).format(angle=round(slope*90)))
     
     def get_df(self): 
         dates = ['year','month','day','hour','minute']
@@ -190,7 +190,7 @@ class Rain:
             self.df.plot(kind='bar', figsize=(16, 6), color=color, title=title)
             plt.ylabel('Mean Rain Rate (mm/hr)')
             if save:
-                plt.savefig(self.save_path+title+'.jpg')
+                plt.savefig(self.save_path+title+'.png')
         if map:
             try:
                 if sharec:
@@ -255,7 +255,7 @@ class Rain:
             self.df.plot(kind='bar', figsize=(16,6), color=color, title=title)
             plt.ylabel("Probability of wet {ts}".format(ts=time_step))
             if save:
-                plt.savefig(self.save_path+title+'.jpg')
+                plt.savefig(self.save_path+title+'.png')
         if map:
             try:
                 if sharec:
@@ -299,7 +299,7 @@ class Rain:
         title = create_title(title, self.year, **kwargs)
         plt.title(title)
         if save:
-            plt.savefig(self.save_path+title+'.jpg')
+            plt.savefig(self.save_path+title+'.png')
 
     def plot_distribution(self, time_step=None, base=0, interval=None, 
                          gage=None, m=None, h=None, save=True):
@@ -328,7 +328,7 @@ class Rain:
         title = create_title(title, self.year, **kwargs)
         plt.title(title)
         if save:
-            plt.savefig(self.save_path+title+'.jpg')
+            plt.savefig(self.save_path+title+'.png')
         
         ax1 = fig.add_subplot(212)
         self.quantiles.plot(xlim=(0.9,1),ax=ax1, legend=None)
@@ -479,5 +479,5 @@ class RadarGage(Rain):
             title = create_title('{ts} '+title, year=self.year, time_step=time_step)
         plt.title(title)
         if save:
-            plt.savefig(self.save_path+title+'.jpg')
+            plt.savefig(self.save_path+title+'.png')
         
