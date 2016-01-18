@@ -9,10 +9,11 @@ get_krige <- function(SVG_data, psill, model, rng, step=5){
     library(sp)
     
     j <- SVG_data[c(4,5,6)]
-    coordinates(j) = ~X+Y
     
-    x <- seq(from=0,to=70,by=step)
-    y <- seq(from=0,to=50,by=step)
+    x <- seq(from=min(j$X),to=max(j$X),by=step)
+    y <- seq(from=min(j$Y),to=max(j$Y),by=step)
+    
+    coordinates(j) = ~X+Y
     DE_gridded <- data.frame(cbind(rep(x,length(y)), rep(y,each=length(x))))
     gridded(DE_gridded) = ~X1+X2
     

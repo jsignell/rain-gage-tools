@@ -89,7 +89,7 @@ class Event:
         if sharec:
             fig.colorbar(scat, ax=list(axes))
         if save:
-            plt.savefig(save_path+title+'.jpg')
+            plt.savefig(save_path+title+'.png')
 
     def movie(self, vmin=None, vmax=None, cmap='gist_earth_r', latlon=True):
         """
