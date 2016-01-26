@@ -264,6 +264,8 @@ class Rain:
                     title = title.replace('at listed gages', 'on differing scales')
             except:
                 pass
+            if type(self.df) == pd.Series:
+                self.df.name = ''
             Event(self.ll.join(self.df)).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
@@ -273,7 +275,7 @@ class Rain:
         self.group = choose_group(self.rate, **kwargs)
         wet_rates = []
         for name, df in self.group:
-            if len(df.columns) > 1:
+            if len(df.axes) > 1:
                 df = df[df>=self.thresh]
                 try:
                     df = df.add_suffix(' '+'{0:0=2d}'.format(name))
@@ -363,7 +365,7 @@ class Rain:
                
         self.rainiest = r[r.lat > -200] 
     
-    def get_storm(self, storm_day='2013-08-13', time_step=None, path='SVG_data'):
+    def get_storm(self, storm_day='2013-08-13', storm_end=None, time_step=None, path='SVG_data'):
         if time_step is None:
             df = self.rate[storm_day]
             time_step = self.freq
