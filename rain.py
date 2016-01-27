@@ -199,6 +199,8 @@ class Rain:
                     title = title.replace('at listed gages', 'on differing scales')
             except:
                 pass
+            if type(self.df) == pd.Series:
+                self.df.name = ''
             Event(self.ll.join(self.df)).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
             
     def reset_rate(self, time_step=None):
@@ -365,28 +367,26 @@ class Rain:
                
         self.rainiest = r[r.lat > -200] 
     
-    def get_storm(self, storm_day='2013-08-13', storm_end=None, time_step=None, path='SVG_data'):
+    def get_storm(self, storm_day='2013-08-13', storm_end=None, time_step=None, cull=False):
+        if storm_end is None:
+            df = self.rate[storm_day].dropna(how='all')
+        else:
+            df = self.rate[storm_day:storm_end].dropna(how='all')
         if time_step is None:
-            df = self.rate[storm_day]
             time_step = self.freq
         else:
-            df = self.rate[storm_day].resample(time_step, **get_resample_kwargs(self.rate)).dropna(how='all')
+            df = df.resample(time_step, **get_resample_kwargs(self.rate)).dropna(how='all')
         
         # nCr for 18C2 produces just 5 bins of 30, so this is the fewest for good results
         wet = df >= self.thresh
-        df = df[wet.sum(axis=1) > 18] 
-
+        if cull:
+            df = df[wet.sum(axis=1) > 18] 
+        elif (wet.sum(axis=1) < 18).any():
+            print('Be careful computing semi-variograms on this storm, lots of non-positive readings')
+        
         if not hasattr(self,'ll'):
             self.get_ll()
 
-        storm = self.ll.join(df.transpose())
-        storm = storm[storm.lat > -200]
-
-        for col in storm:
-            if col not in self.ll.columns:
-                storm[col] = storm[col].replace(0, np.nan)
-        storm.to_csv(path, index=False)
-        
         storm = self.ll.join(df.transpose())
         self.storm = storm[storm.lat > -200]
 
