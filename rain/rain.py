@@ -1,4 +1,17 @@
-from __init__ import *
+"""
+Rain
+---------
+A class to hold data from rain gage networks as well as information about the network. 
+Several methods are implemented to allow easy analysis of these data. Primarily based 
+on the pandas.DataFrame object. 
+
+RadarGage
+---------
+A class that serves as a wrapper around the Rain class and allows the user to easily 
+compare radar and gage data at the gage sites and across the area. Methods are inherited
+when possible. Primarily based on  the pandas.Panel object. 
+
+"""
 from common import *
 from event import *
 

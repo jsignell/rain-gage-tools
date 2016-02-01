@@ -3,11 +3,9 @@ Common methods to be used on objects that might end up being called events.
 These objects would have spatial information as columns and 
 
 """
-from __init__ import *
-from common import *
-
 import statsmodels.formula.api as sm
 
+from common import *
 
 class Event:
     '''

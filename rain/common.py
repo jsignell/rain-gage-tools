@@ -2,14 +2,24 @@
 Common methods to be used by core objects
 
 """
-from __init__ import *
-
+from math import cos, pi
+import string
+import posixpath
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from  mpld3 import plugins
+from JSAnimation import IPython_display
+from matplotlib import animation
+plt.style.use('ggplot')
 
 def import_r_tools(filename='SVG.r'):
+    import os
     from rpy2.robjects import pandas2ri, r, globalenv
     from rpy2.robjects.packages import STAP
     pandas2ri.activate()
-    with open(filename, 'r') as f:
+    path = os.path.dirname(os.path.realpath(__file__))
+    with open(os.path.join(path,filename), 'r') as f:
         string = f.read()
     rfuncs = STAP(string, "rfuncs")
     return rfuncs
