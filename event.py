@@ -23,9 +23,11 @@ class Event:
         
         **kwargs
         '''
-        self.df = df[df.lat > -200]
+        df = df[df.lat > -200]
+        self.data_cols = [col for col in df.columns if col not in ('RG','lat','lon','X','Y')]
+        self.ll_cols = [col for col in df.columns if col not in self.data_cols]
+        self.df = df.dropna(how='all', subset=self.data_cols)
         self.data_cols = [col for col in self.df.columns if col not in ('RG','lat','lon','X','Y')]
-        self.ll_cols = [col for col in self.df.columns if col not in self.data_cols]
         self.ll = self.df[self.ll_cols]
 
     def get_latlon(self, latlon):
