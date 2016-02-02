@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(name='rain',
       version='0.1',
@@ -8,4 +8,7 @@ setup(name='rain',
       author_email='jsignell@gmail.com',
       license='MIT',
       packages=['rain'],
-      zip_safe=False)
+      zip_safe=False,
+      # If any package contains *.r files, include them:
+      package_data={'': ['*.r', '*.R']},
+      include_package_data=True)
