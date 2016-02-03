@@ -3,8 +3,6 @@ Common methods to be used on objects that might end up being called events.
 These objects would have spatial information as columns and 
 
 """
-import statsmodels.formula.api as sm
-
 from common import *
 
 class Event:
@@ -38,8 +36,9 @@ class Event:
                 x,y = self.df['x'], self.df['y']  
         return x, y
     
-    def map_rain(self, save_path='./', title='rain_map', sharec=False, save=True, cmap='gist_earth_r', 
-                 top_to_bottom=False, hide_title=False, latlon=True):
+    def map_rain(self, save_path='./', title='rain_map', sharec=False, save=False, cmap='gist_earth_r', 
+                 top_to_bottom=False, hide_title=False, latlon=True, basemap=False, shpfile=None,
+                 POT=[], locs=[], colors=[], **basemap_kwargs):
         """
         Map rainfall at each gage location 
 
@@ -56,6 +55,7 @@ class Event:
         df = self.df
         x, y = self.get_latlon(latlon)
         cols = self.data_cols
+        map_kwargs = {'cmap':cmap, 's':100}
         if len(cols) == 1:
             ncols = 1
             nrows = 1
@@ -65,25 +65,29 @@ class Event:
         if top_to_bottom:
             nrows, ncols = ncols, nrows
         fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
+
         if sharec:
             try:
                 vmin, vmax = sharec
             except:
                 vmax = min(100, df[cols].max().max())
                 vmin = max(0, df[cols].min().min())
+            map_kwargs.update({'vmin':vmin, 'vmax':vmax})
         if not hide_title:    
             fig.suptitle(title, fontsize=18)
             fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
-
         try:
             axes = axes.reshape(-1)
         except:
             axes = [axes]
         for col, ax in zip(cols, axes):
-            if sharec:
-                scat = ax.scatter(x=x, y=y, c=df[col], s=100, cmap=cmap, vmin=vmin, vmax=vmax)
+            if basemap:
+                a = self.__include_basemap(ax, shpfile, POT, locs, colors, **basemap_kwargs)
+                map_kwargs.update({'latlon': latlon})
             else:
-                scat = ax.scatter(x=x, y=y, c=df[col], s=100, cmap=cmap)
+                a = ax
+            scat = a.scatter(x=x.values, y=y.values, c=df[col].values, **map_kwargs)
+            if not sharec:
                 fig.colorbar(scat, ax=ax)
             ax.set_title(col)
         if sharec:
@@ -139,6 +143,8 @@ class Event:
         -------
         res : Dataframe of means plus residuals for each time and location
         """
+        import statsmodels.formula.api as sm
+        
         df = self.df
         x, y = self.get_latlon(latlon)
         cols = self.data_cols
@@ -308,3 +314,38 @@ class Event:
                 a = a.join(s)
         combined_SVG = a
         self.combined_SVG
+
+    def __include_basemap(self, ax, shpfile, POT, locs, colors, resolution='i', projection='tmerc', **basemap_kwargs):
+        from mpl_toolkits.basemap import Basemap
+        from matplotlib.patches import Polygon
+
+        if 'llcrnrlon' not in basemap_kwargs.keys():
+            basemap_kwargs.update({'llcrnrlon': self.ll.lon.min()-.01})
+        if 'llcrnrlat' not in basemap_kwargs.keys():
+            basemap_kwargs.update({'llcrnrlat': self.ll.lat.min()-.01})
+        if 'urcrnrlon' not in basemap_kwargs.keys():
+            basemap_kwargs.update({'urcrnrlon': self.ll.lon.max()+.01})
+        if 'urcrnrlat' not in basemap_kwargs.keys():
+            basemap_kwargs.update({'urcrnrlat': self.ll.lat.max()+.01})
+        if projection == 'tmerc':
+            if 'lat_0' not in basemap_kwargs.keys():
+                basemap_kwargs.update({'lat_0': (self.ll.lat.min()+self.ll.lat.max())/2.})
+            if 'lon_0' not in basemap_kwargs.keys():
+                basemap_kwargs.update({'lon_0': (self.ll.lon.min()+self.ll.lon.max())/2.})
+
+        map = Basemap(ax=ax, resolution=resolution, projection=projection, **basemap_kwargs)
+
+        map.drawcounties()
+
+        if shpfile is not None:
+            map.readshapefile(shpfile, 'watersheds')
+
+            w_names = []
+            for shape_dict in map.watersheds_info:
+                w_names.append(shape_dict['GAGE_ID'])
+
+            for loc, c in zip(locs, colors):
+                seg = map.watersheds[w_names.index(loc)]
+                poly = Polygon(seg, facecolor=c,edgecolor=c, alpha=.5)
+                ax.add_patch(poly)
+        return map    

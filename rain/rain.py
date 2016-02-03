@@ -64,6 +64,9 @@ class Rain:
             self.units = 'mm'
         self.rate = self.df*self.per_hour
         self.reset_thresh()
+        print('Check the following attributes carefully:')
+        print(' ')
+        self.show()
   
     def get_files(self, year, name):
         f = [name.format(YEAR=y) for y in year]
@@ -76,15 +79,9 @@ class Rain:
         self.df = pd.concat(df_list)
     
     def show(self):
-        print self.path
-        print self.name
-        print self.year
-        print self.freq
-        print self.per_hour
-        print self.ngages
-        print self.units
-        print self.thresh
-        print self.ll_file
+        for (k,v) in self.__dict__.iteritems():
+            if type(v) in [float, int, str]:
+                print('{k} = {v}'.format(k=k,v=v))
     
     def list_gages(self):
         return list(get_index(self.rate, 'RG')[1])
@@ -104,7 +101,7 @@ class Rain:
         ll['X'] = ll['lon']*111.320*(ll['lat']*pi/180).apply(cos)
         self.ll = ll
     
-    def plot_ll(self, title=None, save=True):
+    def plot_ll(self, title=None, save=False):
         df = self.ll[self.ll.lat > -200]
         if hasattr(self, 'df_corr'):
             df_corr = self.df_corr.loc[df.index, df.index]
@@ -189,7 +186,7 @@ class Rain:
 
     def plot_rate(self, time_step=None, base=0, interval=None,
                   gage=None, m=None, h=None, df=None, title=None,
-                  save=True, bar=True, color=None, map=False, **map_kwargs):
+                  save=False, bar=True, color=None, map=False, **map_kwargs):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         if df:
             rate = df
@@ -233,26 +230,32 @@ class Rain:
 
     def reset_thresh(self): 
         self.thresh = min([i for i in self.rate[self.rate.columns[0]] if i > 0])-.001
-
-    def get_wet_bool(self, df):
-        if df is None:
-            df = self.rate
-        def func(x):
-            if x >= self.thresh:
-                return True
-            elif x < self.thresh:
-                return False
-            else:
-                return x       
-        self.wet = df.apply(lambda x: x.apply(lambda x: func(x)))
     
-    def get_wet(self, df):
-        self.wet = self.rate >= self.thresh
-        self.wet[self.rate.isnull()] = np.NaN
+    def get_wet_bool(self):
+        self.wet_bool = self.rate >= self.thresh
+        self.wet_bool[self.rate.isnull()] = np.NaN
+    
+    def get_wet_rate(self, time_step=None, base=0):
+        def __wet(df):
+            if time_step:
+                resample_kwargs = get_resample_kwargs(df)
+                rate = df.resample(time_step, base=base, **resample_kwargs)
+                resample_kwargs.update({'how':'sum'})
+                wet = df.resample(time_step, base=base, **resample_kwargs)
+                wet_rate = rate[wet>=self.thresh]
+            else:
+                wet_rate = df[df>=self.thresh]
+            return wet_rate
+        if type(self.rate) == pd.DataFrame:
+            self.wet_rate = __wet(self.rate)
+        else:
+            gage_wet = __wet(self.rate.gage)
+            radar_wet = __wet(self.rate.radar)
+            self.wet_rate = pd.Panel({'gage': gage_wet, 'radar': radar_wet})
    
     def plot_prob_wet(self, time_step=None, interval=None, base=0,
                       gage=None, m=None, h=None, title=None,
-                      save=True, bar=True, color=None, map=False, **map_kwargs):
+                      save=False, bar=True, color=None, map=False, **map_kwargs):
             
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate, wet=True, **kwargs)
@@ -284,7 +287,7 @@ class Rain:
             Event(self.ll.join(self.df)).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
-                      gage=None, m=None, h=None, save=True, sort_by_type=False):
+                      gage=None, m=None, h=None, save=False, sort_by_type=False):
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         
         self.group = choose_group(self.rate, **kwargs)
@@ -319,7 +322,7 @@ class Rain:
             plt.savefig(self.save_path+title+'.png')
 
     def plot_distribution(self, time_step=None, base=0, interval=None, 
-                         gage=None, m=None, h=None, save=True):
+                         gage=None, m=None, h=None, save=False):
 
         kwargs = dict(time_step=time_step, base=base, interval=interval, gage=gage, m=m, h=h)
         self.gb = choose_group(self.rate,**kwargs)
@@ -459,7 +462,7 @@ class RadarGage(Rain):
     def get_nonan(self):
         self.rate = self.rate.loc[:, self.rate.gage.mean(axis=1).notnull()].loc[:, self.rate.radar.mean(axis=1).notnull()]
     
-    def plot_correlation(self, p=None, time_step=None, base=0,  title=None, save=True):
+    def plot_correlation(self, p=None, time_step=None, base=0,  title=None, save=False):
         if p is not None:
             p = p
         elif time_step is None:
