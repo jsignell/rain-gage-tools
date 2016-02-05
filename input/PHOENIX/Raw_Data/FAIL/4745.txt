@@ -1,7 +1,0 @@
-4745,10/14/1996 0:00:00,0,10/14/1996 0:00:00,2,0.50,"Transmitter","Total estimated from surrounding gages",3
-4745,6/5/1997 0:00:00,56,6/8/1997 0:00:00,56,3.00,"Battery","No rain fell",1
-4745,1/15/1999 0:00:00,39,1/19/1999 0:00:00,39,3.85,"Battery","No rain fell",1
-4745,3/5/2000 0:00:00,0,3/7/2000 0:00:00,0,2.00,"Plugged funnel","Distribution estimated but depth is correct",1
-4745,2/14/2009 0:00:00,78,2/19/2009 0:00:00,79,5.09,"Data collision","Assigned 1mm to 2/17",1
-4745,1/24/2010 0:00:00,79,1/29/2010 0:00:00,80,4.75,"Not documented","Assigned 1mm to 01/28",1
-4745,2/10/2011 0:00:00,47,2/13/2011 0:00:00,47,3.00,"Data collision","No rain fell",1
