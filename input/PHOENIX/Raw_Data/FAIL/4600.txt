@@ -1,0 +1,8 @@
+4600,3/5/2000 0:00:00,3,3/6/2000 0:00:00,43,0.89,"Battery","Data downloaded from site",1
+4600,10/1/2000 0:00:00,0,11/1/2000 0:00:00,0,31.00,"Plugged funnel","Inaccurate monthly and annual totals",2
+4600,12/23/2002 0:00:00,26,12/26/2002 0:00:00,26,2.93,"Battery","No rain fell",1
+4600,2/12/2003 0:00:00,0,2/15/2003 0:00:00,0,2.67,"Calibration error","Storm total estimated",3
+4600,12/10/2009 0:00:00,9,12/14/2009 0:00:00,9,4.00,"Repeater","No rain fell",1
+4600,1/19/2010 0:00:00,13,1/22/2010 0:00:00,70,2.75,"Plugged funnel","Estimated rainfall from radar and nearby gages",3
+4600,2/18/2010 0:00:00,89,2/22/2010 0:00:00,98,4.30,"Transmitter","Assigned 5mm to 2/20 and 4mm to 2/21",1
+4600,9/28/2012 0:00:00,137,9/30/2012 0:00:00,137,2.50,"Data collision","No rain fell",1

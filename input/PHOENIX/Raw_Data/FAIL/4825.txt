@@ -1,0 +1,4 @@
+4825,3/22/2007 0:00:00,45,3/26/2007 0:00:00,58,4.11,"Plugged funnel","Rainfall amount and distribution were estimated",3
+4825,10/22/2005 0:00:00,10,10/27/2005 0:00:00,10,4.96,"Vandalism","No rain fell",1
+4825,10/29/2005 0:00:00,10,10/31/2005 0:00:00,10,1.59,"Antenna","No rain fell",1
+4825,9/9/2010 0:00:00,185,9/13/2010 0:00:00,185,3.88,"Unknown","No rain fell",1

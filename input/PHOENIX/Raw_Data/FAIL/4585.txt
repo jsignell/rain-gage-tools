@@ -1,0 +1,2 @@
+4585,3/23/2007 0:00:00,82,3/27/2007 0:00:00,90,4.14,"Plugged funnel","Rainfall amount and distribution were estimated",3
+4585,9/20/2013 0:00:00,248,9/23/2013 0:00:00,248,2.50,"Repeater","No rain fell",1

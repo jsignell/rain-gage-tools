@@ -1,0 +1,3 @@
+4715,12/4/2009 0:00:00,0,12/7/2009 0:00:00,0,2.83,"Programming error","No rain fell",1
+4715,2/10/2010 0:00:00,66,2/16/2010 0:00:00,66,5.75,"Programming error","Assumed no rain fell",1
+4715,3/18/2010 0:00:00,109,3/20/2010 0:00:00,109,2.25,"Data collision","No rain fell",1
