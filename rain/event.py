@@ -9,7 +9,7 @@ class Event:
     '''
     Base class for Event files
     '''  
-    def __init__(self, df):
+    def __init__(self, df, ll_cols=None):
         '''
         Initialize intance of Event class
         
@@ -20,10 +20,13 @@ class Event:
         **kwargs
         '''
         df = df[df.lat > -200]
-        self.data_cols = [col for col in df.columns if col not in ('RG','lat','lon','X','Y')]
-        self.ll_cols = [col for col in df.columns if col not in self.data_cols]
+        if ll_cols is not None:
+            self.ll_cols = ll_cols
+        else:
+            self.ll_cols = [col for col in df.columns if col in ('RG','lat','lon','X','Y')]
+        self.data_cols = [col for col in df.columns if col not in self.ll_cols]
         self.df = df.dropna(how='all', subset=self.data_cols)
-        self.data_cols = [col for col in self.df.columns if col not in ('RG','lat','lon','X','Y')]
+        self.data_cols = [col for col in self.df.columns if col not in self.ll_cols]
         self.ll = self.df[self.ll_cols]
 
     def get_latlon(self, latlon):
@@ -37,7 +40,8 @@ class Event:
         return x, y
     
     def map_rain(self, save_path='./', title='rain_map', sharec=False, save=False, cmap='gist_earth_r', 
-                 top_to_bottom=False, hide_title=False, latlon=True, basemap=False, shpfile=None,
+                 top_to_bottom=False, hide_title=False, figsize=None, tooltips=False, ax=None, latlon=True, 
+                 basemap=False, shpfile=None,
                  POT=[], locs=[], colors=[], **basemap_kwargs):
         """
         Map rainfall at each gage location 
@@ -64,7 +68,10 @@ class Event:
             nrows = int(np.ceil(len(cols)/float(ncols)))
         if top_to_bottom:
             nrows, ncols = ncols, nrows
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
+        if figsize:
+            fig, axes = plt.subplots(nrows, ncols, figsize=figsize, sharex='row', sharey='row')
+        elif ax is None:
+            fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
 
         if sharec:
             try:
@@ -76,6 +83,10 @@ class Event:
         if not hide_title:    
             fig.suptitle(title, fontsize=18)
             fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
+        return_ax = False
+        if ax is not None:
+            axes = ax
+            return_ax = True
         try:
             axes = axes.reshape(-1)
         except:
@@ -87,13 +98,22 @@ class Event:
             else:
                 a = ax
             scat = a.scatter(x=x.values, y=y.values, c=df[col].values, **map_kwargs)
+            ax.set_title(col)
+            if return_ax:
+                return scat
             if not sharec:
                 fig.colorbar(scat, ax=ax)
-            ax.set_title(col)
         if sharec:
             fig.colorbar(scat, ax=list(axes))
         if save:
             plt.savefig(save_path+title+'.png')
+        if tooltips:
+            import mpld3
+            mpld3.plugins.clear(fig)
+            labels = ['Gage {i}'.format(i=i) for i in df.columns]
+            tooltip = mpld3.plugins.PointLabelTooltip(scat, labels=labels)
+            mpld3.plugins.connect(fig, tooltip)
+            mpld3.display(fig)
 
     def movie(self, vmin=None, vmax=None, cmap='gist_earth_r', latlon=True):
         """
@@ -259,12 +279,12 @@ class Event:
             vmax = df[[i]].max().values[0]
         if latlon:
             ax.scatter(k.lon, k.lat, c=k['var1.pred'], cmap=cmap, marker='s', edgecolors='none', s=step*300, vmin=vmin, vmax=vmax)
-            scat = ax.scatter(df.lon, df.lat, c=df[[i]], cmap=cmap, edgecolors='1', vmin=vmin, vmax=vmax)
+            scat = ax.scatter(df.lon, df.lat, c=df[[i]].values, cmap=cmap, edgecolors='1', vmin=vmin, vmax=vmax)
             ax.set_xlim(min(df.lon), max(df.lon))
             ax.set_ylim(min(df.lat), max(df.lat))
         else:
             ax.scatter(k.x, k.y, c=k['var1.pred'], cmap=cmap, marker='s', edgecolors='none', s=step*300, vmin=vmin, vmax=vmax)
-            scat = ax.scatter(df.X, df.Y, c=df[[i]], cmap=cmap, edgecolors='1', vmin=vmin, vmax=vmax)
+            scat = ax.scatter(df.X, df.Y, c=df[[i]].values, cmap=cmap, edgecolors='1', vmin=vmin, vmax=vmax)
             ax.set_xlim(min(df.X), max(df.X))
             ax.set_ylim(min(df.Y), max(df.Y))
         ax.set_title('{t} (range={dts}km)'.format(t=df.columns[i], dts=round(rng)))

@@ -17,10 +17,12 @@ from event import *
 
 class Rain:
     '''
-    Base class for Rain files
+    A class to hold data from rain gage networks as well as information about the network. 
+    Several methods are implemented to allow easy analysis of these data. Primarily based 
+    on the pandas.DataFrame object. 
     '''  
-    def __init__(self, df_file=None, path='.', year=None, name="Philadelphia_raingage_{YEAR}_NAN_filled.dat",
-                 freq='15min', per_hour=4, ngages=24, units='mm', ll_file="RG_lon_lat.txt", save_path='.'):
+    def __init__(self, df=None, df_file=None, path='.', year=None, name=None,
+                 freq='15min', per_hour=4, ngages=None, units='mm', ll_file=None, save_path='.'):
         '''
         If you choose to give a year, you still need to give a path to the
         parent directory and a general name for the files. 
@@ -36,14 +38,16 @@ class Rain:
         if not path.endswith('/'):
             self.path = self.path + '/'
         
-        if df_file is not None:
+        if df is not None:
+            self.df = df
+        
+        elif df_file is not None:
             self.name = df_file
             self.df = pd.read_csv(self.path+self.name, 
                                   delim_whitespace=True, na_values='-99', 
                                   index_col=0, parse_dates=True)
             self.df.columns.name = 'RG'
-            self.year = '{first_year}-{last_year}'.format(first_year=self.df.index[0].year,
-                                                             last_year=self.df.index[-1].year)
+
         elif year is None:
             self.name = name
             self.year = [int(s) for s in self.name.split('_') if s.isdigit()][0]
@@ -58,6 +62,10 @@ class Rain:
                                                              last_year=year[-1])
         else:
             print "Error: incorrect init of Rain"
+        
+        if not hasattr(self, 'year'):
+            self.year = '{first_year}-{last_year}'.format(first_year=self.df.index[0].year,
+                                                          last_year=self.df.index[-1].year)
 
         if self.units.startswith('in'):
             self.df = self.df * 25.4
@@ -96,11 +104,26 @@ class Rain:
             ll['RG'] = ll.index + 1
         ll['RG'] = 'RG' + ll['RG'].apply(str)
         ll.index = ll['RG']
-            
+        self.set_ll(ll)
+        
+    def set_ll(self, ll):
+        """
+        Input latlon information into Rain object
+        
+        Parameters
+        ----------
+        ll : Dataframe object with locations as the index and lat and lon as the columns
+
+        Returns
+        -------
+        self.ll : similar to ll, but also with projected euclidian locations.
+        """
+        ll.index.name = 'RG'
         ll['Y'] = ll['lat']*110.574
         ll['X'] = ll['lon']*111.320*(ll['lat']*pi/180).apply(cos)
         self.ll = ll
-    
+        self.ll_cols = self.ll.columns
+        
     def plot_ll(self, title=None, save=False):
         df = self.ll[self.ll.lat > -200]
         if hasattr(self, 'df_corr'):
@@ -211,7 +234,7 @@ class Rain:
                 pass
             if type(self.df) == pd.Series:
                 self.df.name = ''
-            Event(self.ll.join(self.df)).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
+            Event(self.ll.join(self.df), self.ll_cols).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
             
     def reset_rate(self, time_step=None):
         if time_step is None:
@@ -284,7 +307,7 @@ class Rain:
                 pass
             if type(self.df) == pd.Series:
                 self.df.name = ''
-            Event(self.ll.join(self.df)).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
+            Event(self.ll.join(self.df), self.ll_cols).map_rain(self.save_path, 'Map of '+title, save=save, **map_kwargs)
         
     def plot_boxplots(self, time_step=None, base=0, interval=None, 
                       gage=None, m=None, h=None, save=False, sort_by_type=False):
@@ -456,6 +479,7 @@ class RadarGage(Rain):
         self.path = gage.path
         self.ll_file = gage.ll_file
         self.ll = gage.ll
+        self.ll_cols = gage.ll_cols
         if gage.per_hour != radar.per_hour:
             print('gage and radar time steps don\'t match')
         
