@@ -15,14 +15,15 @@ when possible. Primarily based on  the pandas.Panel object.
 from common import *
 from event import *
 
+    
 class Rain:
     '''
     A class to hold data from rain gage networks as well as information about the network. 
     Several methods are implemented to allow easy analysis of these data. Primarily based 
     on the pandas.DataFrame object. 
     '''  
-    def __init__(self, df=None, df_file=None, path='.', year=None, name=None,
-                 freq='15min', per_hour=4, ngages=None, units='mm', ll_file=None, save_path='.'):
+    def __init__(self, df=None, df_file=None, path='', year=None, name=None,
+                 freq='15min', per_hour=4, ngages=None, units='mm', ll_file=None, save_path=''):
         '''
         If you choose to give a year, you still need to give a path to the
         parent directory and a general name for the files. 
@@ -35,7 +36,7 @@ class Rain:
         self.path = path.replace('\\','/')
         self.save_path = save_path.replace('\\','/')
         
-        if not path.endswith('/'):
+        if len(path)>0 and not path.endswith('/'):
             self.path = self.path + '/'
         
         if df is not None:
@@ -67,7 +68,7 @@ class Rain:
             self.year = '{first_year}-{last_year}'.format(first_year=self.df.index[0].year,
                                                           last_year=self.df.index[-1].year)
 
-        if self.units.startswith('in'):
+        if self.units.startswith('in') and '/' not in self.units:
             self.df = self.df * 25.4
             self.units = 'mm'
         self.rate = self.df*self.per_hour
@@ -88,13 +89,13 @@ class Rain:
     
     def show(self):
         for (k,v) in self.__dict__.iteritems():
-            if type(v) in [float, int, str]:
+            if type(v) in [float, int, str, unicode, list]:
                 print('{k} = {v}'.format(k=k,v=v))
     
     def list_gages(self):
         return list(get_index(self.rate, 'RG')[1])
     
-    def get_ll(self, cols=['RG', 'lon', 'lat'], path=None, ll_file=None):
+    def get_ll(self, cols=['lat', 'lon'], path=None, ll_file=None):
         if ll_file is None:
             ll_file = self.ll_file
         if path is None:
@@ -523,3 +524,51 @@ class RadarGage(Rain):
         if save:
             plt.savefig(self.save_path+title+'.png')
         
+def read_nc(nc_file):
+    import xarray
+
+    ds = xarray.open_dataset(nc_file, decode_coords=False)
+    print ds
+
+    vars = ds.data_vars.keys()
+    for var in vars:
+        if var.lower()[:3] not in ['lat', 'lon']:
+            df = ds[var].to_pandas()
+            try:
+                freq = (df.index[1]-df.index[0]).seconds/60
+                kwargs = {'ngages': min(ds.dims.values()),
+                          'units': ds[var].units,
+                          'per_hour': 60/freq,
+                          'freq': str(freq)+'min'}
+            except:
+                kwargs = None
+            vars.remove(var)
+    ll = ds[vars].to_dataframe()
+
+    print('')
+    print('Rain objects need specific index and column names: ')
+    print('RG, date_time, lat, lon. Trying to set them...')
+
+    if 'gage' in df.columns.name.lower():
+        df.columns.name = 'RG'
+    if 'time' in df.index.name.lower():
+        df.index.name = 'date_time'
+
+    if 'gage' in ll.index.name.lower():
+        ll.index.name = 'RG'
+    ll.columns = [l.lower()[:3] for l in ll.columns]
+
+    print ''
+    if df.columns.name == ll.index.name =='RG' and df.index.name=='date_time' and 'lat' in ll.columns and 'lon' in ll.columns:
+        print 'Sucess!'
+        if kwargs is not None:
+            rg = Rain(df, **kwargs)
+            rg.set_ll(ll)
+            return rg
+    else:
+        print 'Manual editing needed'
+    print ''
+    print 'Returning tuple containing data dataframe and location dataframe '
+    print '(once these are cleaned, initialize Rain directly with required kwargs: '
+    print 'ngages, units, per_hour, freq)'
+    return (df, ll)   
