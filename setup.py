@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name='rain',
-      version='0.1',
+      version='0.2',
       description='Tools for reading rain gage data files',
       url='http://github.com/jsignell/rain-gage-tools',
       author='Julia Signell',
