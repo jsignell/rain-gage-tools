@@ -22,7 +22,7 @@ class Rain:
     Several methods are implemented to allow easy analysis of these data. Primarily based 
     on the pandas.DataFrame object. 
     '''  
-    def __init__(self, df=None, df_file=None, path='', year=None, name=None,
+    def __init__(self, df=None, df_file=None, path='', year=None, name=None, show=True,
                  freq='15min', per_hour=4, ngages=None, units='mm', ll_file=None, save_path=''):
         '''
         If you choose to give a year, you still need to give a path to the
@@ -73,9 +73,8 @@ class Rain:
             self.units = 'mm'
         self.rate = self.df*self.per_hour
         self.reset_thresh()
-        print('Check the following attributes carefully:')
-        print(' ')
-        self.show()
+        if show:
+            self.show()
   
     def get_files(self, year, name):
         f = [name.format(YEAR=y) for y in year]
@@ -88,8 +87,10 @@ class Rain:
         self.df = pd.concat(df_list)
     
     def show(self):
+        print('Check the following attributes carefully:')
+        print(' ')
         for (k,v) in self.__dict__.iteritems():
-            if type(v) in [float, int, str, unicode, list]:
+            if type(v) in [float, int, str, unicode]:
                 print('{k} = {v}'.format(k=k,v=v))
     
     def list_gages(self):
@@ -471,21 +472,21 @@ class Rain:
 
 class RadarGage(Rain):
     
-    def __init__(self, radar, gage):
-        self.rate = pd.Panel({'gage': gage.rate, 'radar': radar.rate})
-        self.freq = gage.freq
-        self.per_hour = gage.per_hour
-        self.year = gage.year
-        self.thresh = gage.thresh
-        self.path = gage.path
-        self.ll_file = gage.ll_file
-        self.ll = gage.ll
-        self.ll_cols = gage.ll_cols
-        if gage.per_hour != radar.per_hour:
-            print('gage and radar time steps don\'t match')
+    def __init__(self, Rain_gage, Rain_radar):
+        self.rate = pd.Panel({'gage': Rain_gage.rate, 'radar': Rain_radar.rate})
+        for (k,v) in Rain_gage.__dict__.items():
+            if type(v) in [float, int, str, unicode]:
+                if hasattr(Rain_radar, k):
+                    if v == Rain_radar.__dict__.get(k):
+                        self.__dict__.update({k:v})
+                    else:
+                        print('gage.{k} = {v} and radar.{k} = {v}')
+                        print('You will need to manually fix the discrepancy')
+                        print('')
         
     def get_nonan(self):
         self.rate = self.rate.loc[:, self.rate.gage.mean(axis=1).notnull()].loc[:, self.rate.radar.mean(axis=1).notnull()]
+        self.year = '{start}-{end}'.format(start=self.rate.gage.index[0].year, end=self.rate.gage.index[-1].year)
     
     def plot_correlation(self, p=None, time_step=None, base=0,  title=None, save=False):
         if p is not None:
@@ -524,51 +525,3 @@ class RadarGage(Rain):
         if save:
             plt.savefig(self.save_path+title+'.png')
         
-def read_nc(nc_file):
-    import xarray
-
-    ds = xarray.open_dataset(nc_file, decode_coords=False)
-    print ds
-
-    vars = ds.data_vars.keys()
-    for var in vars:
-        if var.lower()[:3] not in ['lat', 'lon']:
-            df = ds[var].to_pandas()
-            try:
-                freq = (df.index[1]-df.index[0]).seconds/60
-                kwargs = {'ngages': min(ds.dims.values()),
-                          'units': ds[var].units,
-                          'per_hour': 60/freq,
-                          'freq': str(freq)+'min'}
-            except:
-                kwargs = None
-            vars.remove(var)
-    ll = ds[vars].to_dataframe()
-
-    print('')
-    print('Rain objects need specific index and column names: ')
-    print('RG, date_time, lat, lon. Trying to set them...')
-
-    if 'gage' in df.columns.name.lower():
-        df.columns.name = 'RG'
-    if 'time' in df.index.name.lower():
-        df.index.name = 'date_time'
-
-    if 'gage' in ll.index.name.lower():
-        ll.index.name = 'RG'
-    ll.columns = [l.lower()[:3] for l in ll.columns]
-
-    print ''
-    if df.columns.name == ll.index.name =='RG' and df.index.name=='date_time' and 'lat' in ll.columns and 'lon' in ll.columns:
-        print 'Sucess!'
-        if kwargs is not None:
-            rg = Rain(df, **kwargs)
-            rg.set_ll(ll)
-            return rg
-    else:
-        print 'Manual editing needed'
-    print ''
-    print 'Returning tuple containing data dataframe and location dataframe '
-    print '(once these are cleaned, initialize Rain directly with required kwargs: '
-    print 'ngages, units, per_hour, freq)'
-    return (df, ll)   
