@@ -41,8 +41,7 @@ class Event:
     
     def map_rain(self, save_path='./', title='rain_map', sharec=False, save=False, cmap='gist_earth_r', 
                  top_to_bottom=False, hide_title=False, figsize=None, tooltips=False, ax=None, latlon=True, 
-                 basemap=False, shpfile=None,
-                 POT=[], locs=[], colors=[], **basemap_kwargs):
+                 basemap=False, shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
         """
         Map rainfall at each gage location 
 
@@ -143,8 +142,8 @@ class Event:
         fig.colorbar(sc)
 
         def animate(i):
-            ax.set_title(df[[i+len(self.ll_cols)]].columns[0])
-            scat = ax.scatter(x=x, y=y, cmap=cmap, c=df[[i+len(self.ll_cols)]], vmin=0, vmax=vmax, s=100)
+            ax.set_title(cols[i])
+            scat = ax.scatter(x=x, y=y, cmap=cmap, c=df[cols[i]], vmin=0, vmax=vmax, s=100)
 
         return animation.FuncAnimation(fig, animate, frames=len(cols), interval=300, blit=True)
 
@@ -189,13 +188,13 @@ class Event:
             res = res.drop(zeros, axis=1)
         self.res = res
 
-    def variogram(self, i=5, plot_v=True, **kwargs):
+    def variogram(self, i=0, plot_v=True, **kwargs):
         """
         Generate a variogram from a dataframe with a single data column or a column index number
 
         Parameters
         ----------
-        i : data column index number (defaults to 5)
+        i : data column index number (defaults to 0)
 
         **kwargs (target_np, alpha, tol_hor, max_bnd, last_max)
 
@@ -208,20 +207,21 @@ class Event:
         rfuncs = import_r_tools()
         
         df = self.df
+        cols = self.data_cols
         
-        r_df = df[[0,1,2,3,4, i]].dropna(how='any')
-        v = pandas2ri.ri2py(rfuncs.get_iSVG(r_df, 6, **kwargs))
+        r_df = df.loc[:,['X', 'Y', cols[i]]].dropna(how='any')
+        v = pandas2ri.ri2py(rfuncs.get_iSVG(r_df, 3, **kwargs))
         if plot_v:
             v.plot(x='dist', y='gamma', marker = 'o', figsize=(8,4))
         return v
 
-    def krige(self, i=5, v=None, step=1, res=True, plot_v=False, plot_k=True, animated=False, **plot_kwargs):
+    def krige(self, i=0, v=None, step=1, res=True, plot_v=False, plot_k=True, animated=False, **plot_kwargs):
         """
         Krige the dataframe with a single data column or a column index number
 
         Parameters
         ----------
-        i : data column index number (defaults to 5)
+        i : data column index number (defaults to 0)
 
         v : variogram to use in determining sill and range
 
@@ -236,19 +236,21 @@ class Event:
         from rpy2.robjects import pandas2ri
         pandas2ri.activate()
         rfuncs = import_r_tools()
+
         if res:
             if not hasattr(self, 'res'):
                 self.detrend()
             df = self.res
         else:
             df = self.df
+        cols = self.data_cols
         
-        r_df = df[[0,1,2,3,4, i]].dropna(how='any')
+        r_df = df.loc[:,['X', 'Y', cols[i]]].dropna(how='any')
         if not v:
             v = pandas2ri.ri2py(rfuncs.get_variogram(r_df))
 
         model = 'Sph'
-        psill = r_df.var()[4]
+        psill = r_df.var()[cols[i]]
         for j in range(len(v)):
             if v.gamma[j] > psill:
                 rng = v.dist[j]
@@ -263,31 +265,44 @@ class Event:
             return k
         return k
 
-    def plot_krige(self, i, k, rng, step=1, res=True, animated=False, 
-                   ax=None, cmap='gist_earth_r', vmin=None, vmax=None, latlon=False):
+    def plot_krige(self, i, k, rng, step=1, res=True, animated=False,
+                   ax=None, cmap='gist_earth_r', vmin=None, vmax=None, latlon=False,
+                   basemap=False, shpfile=None, POT=[], locs=[], colors=[]):
         if res:
             if not hasattr(self, 'res'):
-                self.detrend()
+                self.detrend() 
             df = self.res
         else:
             df = self.df
+        cols = self.data_cols
+        map_kwargs = {'cmap':cmap}
+        
         if not ax:
             fig, ax = plt.subplots(figsize=(10,6))
         if not vmin:
-            vmin = max(0, df[[i]].min().values[0])
+            vmin = max(0, df[cols[i]].min())
         if not vmax:
-            vmax = df[[i]].max().values[0]
-        if latlon:
-            ax.scatter(k.lon, k.lat, c=k['var1.pred'], cmap=cmap, marker='s', edgecolors='none', s=step*300, vmin=vmin, vmax=vmax)
-            scat = ax.scatter(df.lon, df.lat, c=df[[i]].values, cmap=cmap, edgecolors='1', vmin=vmin, vmax=vmax)
-            ax.set_xlim(min(df.lon), max(df.lon))
-            ax.set_ylim(min(df.lat), max(df.lat))
+            vmax = df[cols[i]].max()
+        map_kwargs.update({'vmin':vmin, 'vmax':vmax})
+        
+        if basemap:
+            latlon=True
+            a = self.__include_basemap(ax, shpfile, POT, locs, colors)
+            map_kwargs.update({'latlon': latlon, 'alpha':0.7})
         else:
-            ax.scatter(k.x, k.y, c=k['var1.pred'], cmap=cmap, marker='s', edgecolors='none', s=step*300, vmin=vmin, vmax=vmax)
-            scat = ax.scatter(df.X, df.Y, c=df[[i]].values, cmap=cmap, edgecolors='1', vmin=vmin, vmax=vmax)
-            ax.set_xlim(min(df.X), max(df.X))
-            ax.set_ylim(min(df.Y), max(df.Y))
-        ax.set_title('{t} (range={dts}km)'.format(t=df.columns[i], dts=round(rng)))
+            a = ax
+        if latlon:
+            a.scatter(k.lon.values, k.lat.values, c=k['var1.pred'].values, marker='s', edgecolors='none', s=step*300, **map_kwargs)
+            scat = a.scatter(df.lon.values, df.lat.values, c=df[cols[i]].values, edgecolors='1', **map_kwargs)
+            if not basemap:
+                a.set_xlim(min(df.lon), max(df.lon))
+                a.set_ylim(min(df.lat), max(df.lat))
+        else:
+            a.scatter(k.x, k.y, c=k['var1.pred'].values, marker='s', edgecolors='none', s=step*300, **map_kwargs)
+            scat = a.scatter(df.X, df.Y, c=df[cols[i]].values, edgecolors='1', **map_kwargs)
+            a.set_xlim(min(df.X), max(df.X))
+            a.set_ylim(min(df.Y), max(df.Y))
+        plt.title('{t} (range={dts}km)'.format(t=cols[i], dts=round(rng)))
         if animated:
             return scat
         plt.colorbar(scat)
