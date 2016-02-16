@@ -3,55 +3,70 @@ from event import *
 from rain import *
 import xarray as xr
 
-def to_netcdf(Rain_gage=None, Rain_radar=None, path='', out_file='{site}.nc', site='City', **kwargs):
-    
-    if Rain_gage:
-        Rain_gage.rate.index.name = 'time'
-        datasets = [xr.DataArray(Rain_gage.rate[i]/Rain_gage.per_hour) for i in Rain_gage.rate.columns]
-        combined = xr.concat(datasets, 'station')
-        ds0 = combined.to_dataset(name='rain_gage')
-        ds0.rain_gage.attrs.update({'units':Rain_gage.units, 'standard_name': 'gage rain depth', 'coordinates': 'lat lon'})
-        ds0.rain_gage.encoding = {'chunksizes': [5, 100000], 'zlib': True}
 
-        f = Rain_gage.ll.loc[:,['lat', 'lon']]
+def to_netcdf(Rain_gage=None, Rain_radar=None, out_file='{site}.nc', path='', site='City', station_names=None, **kwargs):
+    
+    def __do_ll(Rain, ds0):
+        ll = ['lat', 'lon']
+        if type(station_names) is list:
+            ll.extend(station_names)
+        f = Rain.ll.loc[:, ll]
         f = f.reset_index(range(len(f.index)))
         f.index.name='station'
-        ds1 = xr.Dataset.from_dataframe(f.loc[:,['lat','lon']])
+        f = f.loc[:, ll]
+        ds1 = xr.Dataset.from_dataframe(f)
         ds_ = ds0.merge(ds1)
+        return ds_, f
     
-    if Rain_radar:
-        Rain_radar.rate.index.name = 'time'
-        datasets = [xr.DataArray(Rain_radar.rate[i]/Rain_radar.per_hour) for i in Rain_radar.rate.columns]
+    def __do_rate(Rain, name, standard_name):
+        Rain.rate.index.name = 'time'
+        datasets = [xr.DataArray(Rain.rate[i]/Rain.per_hour) for i in Rain.rate.columns]
         combined = xr.concat(datasets, 'station')
-        ds0 = combined.to_dataset(name='rain_radar')
+        ds0 = combined.to_dataset(name=name)
+        ds0[name].attrs.update({'units': Rain.units, 'standard_name': standard_name, 'coordinates': 'lat lon'})
+        ds0[name].encoding = {'chunksizes': (5, 100000), 'zlib': True}
+        return ds0
+    
+    if Rain_gage:
+        ds0 = __do_rate(Rain_gage, name='rain_gage', standard_name='gage rain depth')      
+        ds_, f = __do_ll(Rain_gage, ds0)
         
+    if Rain_radar:
+        ds0 = __do_rate(Rain_radar, name='rain_radar', standard_name='radar rain depth') 
         if not ds_:
-            f = Rain_radar.ll.loc[:,['lat', 'lon']]
-            f = f.reset_index(range(len(f.index)))
-            f.index.name='station'
-            ds1 = xr.Dataset.from_dataframe(f.loc[:,['lat','lon']])
-            ds_ = ds0.merge(ds1)
-            
-        ds_ = ds_.merge(ds0)
-        ds_.rain_radar.attrs.update({'units':Rain_radar.units, 'standard_name': 'radar rain depth', 'coordinates': 'lat lon'})
-        ds_.rain_radar.encoding = {'chunksizes': [5, 100000], 'zlib': True}
-   
+            ds_, f = __do_ll(Rain_radar, ds0)
+        else:
+            ds_ = ds_.merge(ds0)
+
+    if type(station_names) is pd.DataFrame:
+        if 'station_name' not in station_names.columns:
+            station_names.index.name = 'station_name'
+            station_names = station_names.reset_index(range(len(station_names.index)))
+        f['station'] = f.index
+        f = f.merge(station_names, how='outer', on=['lat','lon'])
+        f = f.reset_index(f['station'])
+        f.index.name = 'station'
+        f = f.drop(['lat','lon', 'station', 'index'], axis=1)
+        ds1 = xr.Dataset.from_dataframe(f)
+        ds_ = ds_.merge(ds1)
+        ds_.station_name.attrs.update({'long_name': 'station name', 'cf_role':'timeseries_id'})
+        
     ds_.lat.attrs.update({'standard_name': 'latitude', 'long_name':'station latitude', 'units': 'degrees_north'})
     ds_.lon.attrs.update({'standard_name': 'longitude', 'long_name':'station longitude', 'units': 'degrees_east'})
-    ds_.station.encoding = {'chunksizes': [5],'zlib': True}
-    ds_.time.encoding = {'units':'minutes since 1970-01-01', 'calendar':'gregorian',
-                         'chunksizes': [100000], 'zlib': True}
+    ds_.time.encoding = {'units':'minutes since 1970-01-01', 'calendar':'gregorian', 'dtype': np.double}
 
     ds_.attrs.update({'description': '{site} rain gage network'.format(site=site),
-                      'history': 'Created {now}'.format(now=pd.datetime.now())})
+                      'history': 'Created {now}'.format(now=pd.datetime.now()),
+                      'Conventions': "CF-1.6",
+                      'featureType': 'timeSeries'})
 
-    ds_.to_netcdf(path=path+out_file.format(site=site), format='netCDF4', **kwargs)
+    ds_.to_netcdf(path=path+out_file.format(site=site), format='netCDF4', engine='h5netcdf')
     ds_.close()
     
     
-def read_netcdf(nc_file):
+def read_netcdf(nc_file, path=''):
     
-    ds = xr.open_dataset(nc_file, decode_coords=False)
+    ds = xr.open_dataset(path+nc_file, decode_coords=False)
     print ds
     
     gage=None
@@ -59,7 +74,7 @@ def read_netcdf(nc_file):
     
     vars = ds.data_vars.keys()
     for var in vars:
-        if var.lower()[:3] not in ['lat', 'lon']:
+        if ds.data_vars[var].ndim == 2:
             df = ds[var].to_pandas()
             if len(df.columns)> len(df.index):
                 df = df.T
@@ -88,7 +103,8 @@ def read_netcdf(nc_file):
 
     if 'gage' in ll.index.name.lower() or ll.index.name=='station':
         ll.index.name = 'RG'
-    ll.columns = [l.lower()[:3] for l in ll.columns]
+    if 'latitiude' in ll.columns:
+        ll.columns = [l.lower()[:3] for l in ll.columns]
 
     print ''
     if not gage and not radar:
