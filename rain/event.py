@@ -23,7 +23,7 @@ class Event:
         if ll_cols is not None:
             self.ll_cols = ll_cols
         else:
-            self.ll_cols = [col for col in df.columns if col in ('RG','lat','lon','X','Y')]
+            self.ll_cols = [col for col in df.columns if col in ('RG','lat','lon','X','Y','start_date','station_name')]
         self.data_cols = [col for col in df.columns if col not in self.ll_cols]
         self.df = df.dropna(how='all', subset=self.data_cols)
         self.data_cols = [col for col in self.df.columns if col not in self.ll_cols]
@@ -114,7 +114,8 @@ class Event:
             mpld3.plugins.connect(fig, tooltip)
             mpld3.display(fig)
 
-    def movie(self, vmin=None, vmax=None, cmap='gist_earth_r', latlon=True):
+    def movie(self, vmin=None, vmax=None, cmap='gist_earth_r', latlon=True, basemap=False,
+              shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
         """
         Make a movie of rainfall maps
 
@@ -136,14 +137,21 @@ class Event:
             vmin=0
         if not vmax:
             vmax = min(100, df[cols].max().max())
+        map_kwargs = {'x':x.values, 'y':y.values, 'cmap':cmap, 'vmin':vmin, 'vmax':vmax, 's':100}
+        
+        fig, ax = plt.subplots(1,1,figsize=(10,6))
+        if basemap:
+            a = self.__include_basemap(ax, shpfile, POT, locs, colors, **basemap_kwargs)
+            map_kwargs.update({'latlon': latlon})
+        else:
+            a = ax
 
-        fig, ax = plt.subplots(1,1,figsize= (10,6))
-        sc = ax.scatter(x=x, y=y, cmap=cmap, c=y*0, vmin=vmin, vmax=vmax, s=100)
+        sc = a.scatter(c=y.values*0, **map_kwargs)
         fig.colorbar(sc)
 
         def animate(i):
             ax.set_title(cols[i])
-            scat = ax.scatter(x=x, y=y, cmap=cmap, c=df[cols[i]], vmin=0, vmax=vmax, s=100)
+            scat = a.scatter(c=df[cols[i]].values, **map_kwargs)
 
         return animation.FuncAnimation(fig, animate, frames=len(cols), interval=300, blit=True)
 
