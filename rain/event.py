@@ -24,10 +24,29 @@ class Event:
             self.ll_cols = ll_cols
         else:
             self.ll_cols = [col for col in df.columns if col in ('RG','lat','lon','X','Y','start_date','station_name')]
+        
         self.data_cols = [col for col in df.columns if col not in self.ll_cols]
         self.df = df.dropna(how='all', subset=self.data_cols)
         self.data_cols = [col for col in self.df.columns if col not in self.ll_cols]
         self.ll = self.df[self.ll_cols]
+    
+    def set_ll(self):
+        """
+        Get projected distances in catrtesian coordinates
+        
+        Parameters
+        ----------
+        self : lat and lon in columns
+
+        Returns
+        -------
+        self.ll : similar to ll, but also with projected euclidian locations.
+        """
+        self.ll['Y'] = self.ll['lat']*110.574
+        self.ll['X'] = self.ll['lon']*111.320*(self.ll['lat']*pi/180).apply(cos)
+        self.ll_cols = self.ll.columns
+        self.df.insert(2, 'X',self.ll.X)
+        self.df.insert(3, 'Y',self.ll.Y)
 
     def get_latlon(self, latlon):
         if latlon:
@@ -39,7 +58,7 @@ class Event:
                 x,y = self.df['x'], self.df['y']  
         return x, y
     
-    def map_rain(self, save_path='./', title='rain_map', sharec=False, save=False, cmap='gist_earth_r', 
+    def map_rain(self, save_path='./', title='', sharec=False, save=False, cmap='gist_earth_r', 
                  top_to_bottom=False, hide_title=False, figsize=None, tooltips=False, ax=None, latlon=True, 
                  basemap=False, shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
         """
@@ -55,6 +74,8 @@ class Event:
         -------
         fig : map of rain intensity at each location
         """
+        if len(title) == 0:
+            hide_title=True
         df = self.df
         x, y = self.get_latlon(latlon)
         cols = self.data_cols
@@ -214,6 +235,9 @@ class Event:
         pandas2ri.activate()
         rfuncs = import_r_tools()
         
+        if 'X' not in self.ll_cols:
+            self.set_ll()
+            
         df = self.df
         cols = self.data_cols
         
@@ -244,7 +268,10 @@ class Event:
         from rpy2.robjects import pandas2ri
         pandas2ri.activate()
         rfuncs = import_r_tools()
-
+        
+        if 'X' not in self.ll_cols:
+            self.set_ll()
+        
         if res:
             if not hasattr(self, 'res'):
                 self.detrend()
@@ -266,12 +293,13 @@ class Event:
         k = pandas2ri.ri2py(rfuncs.get_krige(r_df, psill, model, rng, step=step))
         k['lat'] = k.y/110.574
         k['lon'] = k.x/(111.320*(k['lat']*pi/180).apply(cos))
+        self.k = k
         if plot_k and animated:
             return self.plot_krige(i, k, rng, step=step, res=res, animated=animated, **plot_kwargs)
         elif plot_k and not animated:
             self.plot_krige(i, k, rng, step=step, res=res, animated=animated, **plot_kwargs)
+        else:
             return k
-        return k
 
     def plot_krige(self, i, k, rng, step=1, res=True, animated=False,
                    ax=None, cmap='gist_earth_r', vmin=None, vmax=None, latlon=False,
