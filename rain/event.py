@@ -1,6 +1,9 @@
 """
-Common methods to be used on objects that might end up being called events. 
-These objects would have spatial information as columns and 
+Event
+---------
+A class to hold data from particular events in the rain gage network as well as information 
+about the network. This class is the transpose of a temporal slice or aggregation of the 
+Rain object. So the columns are dates and the rows are rain gage locations. 
 
 """
 from common import *
@@ -12,12 +15,12 @@ class Event:
     def __init__(self, df, ll_cols=None):
         '''
         Initialize intance of Event class
-        
+	    
         Parameters
         ----------
-        df : Dataframe object with locations as the index and values to map as the columns
+        df : Dataframe object with rain gage locations as the index. The columns must include 
+             lat and lon as well as the times of interest.
         
-        **kwargs
         '''
         df = df[df.lat > -200]
         if ll_cols is not None:
@@ -32,7 +35,7 @@ class Event:
     
     def set_ll(self):
         """
-        Get projected distances in catrtesian coordinates
+        Add projected distances in catrtesian coordinates given lat and lon
         
         Parameters
         ----------
@@ -48,7 +51,7 @@ class Event:
         self.df.insert(2, 'X',self.ll.X)
         self.df.insert(3, 'Y',self.ll.Y)
 
-    def get_latlon(self, latlon):
+    def __get_latlon(self, latlon):
         if latlon:
             x,y = self.df['lon'], self.df['lat']
         else:
@@ -62,14 +65,35 @@ class Event:
                  top_to_bottom=False, hide_title=False, figsize=None, tooltips=False, ax=None, latlon=True, 
                  basemap=False, shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
         """
-        Map rainfall at each gage location 
+        Map rainfall at each gage location
 
         Parameters
         ----------
-        df : Dataframe object with locations as the index and values to map as the columns
+        self : Event object with at least one data column
 
-        **kwargs
-
+		kwargs
+		----------
+		
+		save_path : Path to which output should be saved - must include trailing slash
+		title : Plot title
+		sharec : bool to represent whether the plots should share a colorbar or tuple of min,max values
+		save : bool to determine whether plot should be saved
+		cmap : colormap - default 'gist_eart_r'
+		s : int size of points - default 100
+		top_to_bottom : bool to orient the subplots vertically rather than horizontally
+		hide_title : bool to not have a title over the whole figure
+		figsize : as in matplotlib
+		tooltips: bool include labels of on scroll over the points
+		ax : axes object onto which the map should plot
+		latlon : bool plot against lat and lon rather than euclidian distances - default True
+		basemap : bool include underlaying county boundaries
+		shpfile : str shapefile for the watersheds in the area
+		POT : list times of peak over threshold incidents
+		locs : list GAGE_IDs of the watersheds of interest
+		colors: list colors to use for watersheds of interest
+		
+        **basemap_kwargs
+		
         Returns
         -------
         fig : map of rain intensity at each location
@@ -77,7 +101,7 @@ class Event:
         if len(title) == 0:
             hide_title=True
         df = self.df
-        x, y = self.get_latlon(latlon)
+        x, y = self.__get_latlon(latlon)
         cols = self.data_cols
         map_kwargs = {'cmap':cmap, 's':100}
         if len(cols) == 1:
@@ -135,30 +159,43 @@ class Event:
             mpld3.plugins.connect(fig, tooltip)
             mpld3.display(fig)
 
-    def movie(self, vmin=None, vmax=None, cmap='gist_earth_r', latlon=True, basemap=False,
+    def movie(self, vmin=None, vmax=None, cmap='gist_earth_r', s=100, latlon=True, basemap=False,
               shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
         """
-        Make a movie of rainfall maps
+        Make a movie of rainfall maps using JSAnimation (always share a colormap)
 
         Parameters
         ----------
-        df : Dataframe object with string location names as the index and values to map as the columns
+	    self : Event object with at least one data column
 
-        **kwargs
+        kwargs
+		----------
+		vmin : min value for colormap
+		vmax : max value for colormap
+		cmap : colormap - default 'gist_eart_r'
+		s : int size of points - default 100
+		latlon : bool plot against lat and lon rather than euclidian distances - default True
+		basemap : bool include underlaying county boundaries
+		shpfile : str shapefile for the watersheds in the area
+		POT : list times of peak over threshold incidents
+		locs : list GAGE_IDs of the watersheds of interest
+		colors: list colors to use for watersheds of interest
+		
+        **basemap_kwargs
 
         Returns
         -------
         animation : animation of maps (breaks on matplotlib > 1.4.3)
         """    
         df = self.df
-        x, y = self.get_latlon(latlon)
+        x, y = self.__get_latlon(latlon)
         cols = self.data_cols
 
         if not vmin:
-            vmin=0
+            vmin = max(0, df[cols].min().min())
         if not vmax:
-            vmax = min(100, df[cols].max().max())
-        map_kwargs = {'x':x.values, 'y':y.values, 'cmap':cmap, 'vmin':vmin, 'vmax':vmax, 's':100}
+            vmax = df[cols].max().max()
+        map_kwargs = {'x':x.values, 'y':y.values, 'cmap':cmap, 'vmin':vmin, 'vmax':vmax, 's':s}
         
         fig, ax = plt.subplots(1,1,figsize=(10,6))
         if basemap:
@@ -183,18 +220,22 @@ class Event:
 
         Parameters
         ----------
-        df : Dataframe object with string location names as the index and values to map as the columns
+        self : Event object with at least one data column
 
-        **kwargs
+        kwargs
+		----------
+		latlon : bool detrend with respect to lat and lon rather than euclidian distances - default True
+		plot : bool plot the detrending - default False
+		drop_zeros : bool drop all the zeros from the detrended dataset - default True
 
         Returns
         -------
-        res : Dataframe of means plus residuals for each time and location
+        self.res : Dataframe of means plus residuals for each time and location
         """
         import statsmodels.formula.api as sm
         
         df = self.df
-        x, y = self.get_latlon(latlon)
+        x, y = self.__get_latlon(latlon)
         cols = self.data_cols
 
         res = self.ll
@@ -219,11 +260,13 @@ class Event:
 
     def variogram(self, i=0, plot_v=True, **kwargs):
         """
-        Generate a variogram from a dataframe with a single data column or a column index number
+        Generate a variogram
 
         Parameters
         ----------
-        i : data column index number (defaults to 0)
+		self : Event object with at least one data column
+        i : int data column index number (defaults to 0)
+		plot_v : bool generate a plot of the variogram
 
         **kwargs (target_np, alpha, tol_hor, max_bnd, last_max)
 
@@ -252,14 +295,20 @@ class Event:
         Krige the dataframe with a single data column or a column index number
 
         Parameters
-        ----------
-        i : data column index number (defaults to 0)
-
+        -------
+		self : Event object with at least one data column
+		
+		kwargs
+		-------
+        i : int data column index number (defaults to 0)
         v : variogram to use in determining sill and range
-
         step : grid interval to krige on (in km)
+		res : bool detrend points before computing kriged values - default True
+		plot_v : bool plot variogram - default False
+		plot_k : bool plot kriged values - default True
+		animated : bool return axis for animation - default False
 
-        **kwargs
+        **plot_kwargs (cmap, s, latlon, basemap, shpfile, POT, locs, colors)
 
         Returns
         -------
@@ -303,8 +352,40 @@ class Event:
 
     def plot_krige(self, i, k, rng, step=1, res=True, animated=False,
                    ax=None, cmap='gist_earth_r', vmin=None, vmax=None, latlon=False,
-                   basemap=False, shpfile=None, POT=[], locs=[], colors=[]):
-        if res:
+                   basemap=False, shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
+        """
+		Plot the kriged values for data column i
+		
+		Parameters
+		------
+		self : Event object with at least one data column
+		i : int data column index number (defaults to 0)
+        k : Dataframe containing output from r-krige function
+		rng : distance in km for which kriged values are good predictors
+		
+		kwargs 
+		------
+		step : distance in km between grid cells on which to compute kriged values - default 1
+		res : bool detrend points before computing kriged values - default True
+		animated : bool return axis for animation - default False
+		ax : axes object onto which the map should plot
+		cmap : colormap - default 'gist_eart_r'
+		s : int size of points - default 100
+		latlon : bool plot against lat and lon rather than euclidian distances - default True
+		basemap : bool include underlaying county boundaries
+		shpfile : str shapefile for the watersheds in the area
+		POT : list times of peak over threshold incidents
+		locs : list GAGE_IDs of the watersheds of interest
+		colors: list colors to use for watersheds of interest
+		
+		**basemap_kwargs (any kwarg that goes into the Basemap)
+		
+		Returns
+        -------
+        fig : plot of output from r-krige function
+        """
+
+		if res:
             if not hasattr(self, 'res'):
                 self.detrend() 
             df = self.res
@@ -323,7 +404,7 @@ class Event:
         
         if basemap:
             latlon=True
-            a = self.__include_basemap(ax, shpfile, POT, locs, colors)
+            a = self.__include_basemap(ax, shpfile, POT, locs, colors, **basemap_kwargs)
             map_kwargs.update({'latlon': latlon, 'alpha':0.7})
         else:
             a = ax
@@ -349,6 +430,8 @@ class Event:
 
         Parameters
         ----------
+		self : Event object with at least one data column
+		
         **kwargs (target_np, alpha, tol_hor, max_bnd, last_max)
 
         Returns
@@ -367,7 +450,11 @@ class Event:
     def combine_SVGs(self):
         """
         Wrapper for get_SVG to create a consolidated dataframe of dist vs gamma
-
+		
+		Parameters
+		-------
+		self : Event object with at least one data column
+		
         Returns
         -------
         combined_SVG : dataframe of dist vs gamma
