@@ -15,7 +15,7 @@ class Event:
     def __init__(self, df, ll_cols=None):
         '''
         Initialize intance of Event class
-	    
+        
         Parameters
         ----------
         df : Dataframe object with rain gage locations as the index. The columns must include 
@@ -61,8 +61,9 @@ class Event:
                 x,y = self.df['x'], self.df['y']  
         return x, y
     
-    def map_rain(self, save_path='./', title='', sharec=False, save=False, cmap='gist_earth_r', 
-                 top_to_bottom=False, hide_title=False, figsize=None, tooltips=False, ax=None, latlon=True, 
+    def map_rain(self, save_path='./', title='', sharec=False, save=False, cmap='gist_earth_r', s=100,
+                 top_to_bottom=False, hide_title=False, ncols=None, nrows=None, figsize=None, 
+                 ax=None, latlon=True, cartopy=False,
                  basemap=False, shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
         """
         Map rainfall at each gage location
@@ -71,29 +72,29 @@ class Event:
         ----------
         self : Event object with at least one data column
 
-		kwargs
-		----------
-		
-		save_path : Path to which output should be saved - must include trailing slash
-		title : Plot title
-		sharec : bool to represent whether the plots should share a colorbar or tuple of min,max values
-		save : bool to determine whether plot should be saved
-		cmap : colormap - default 'gist_eart_r'
-		s : int size of points - default 100
-		top_to_bottom : bool to orient the subplots vertically rather than horizontally
-		hide_title : bool to not have a title over the whole figure
-		figsize : as in matplotlib
-		tooltips: bool include labels of on scroll over the points
-		ax : axes object onto which the map should plot
-		latlon : bool plot against lat and lon rather than euclidian distances - default True
-		basemap : bool include underlaying county boundaries
-		shpfile : str shapefile for the watersheds in the area
-		POT : list times of peak over threshold incidents
-		locs : list GAGE_IDs of the watersheds of interest
-		colors: list colors to use for watersheds of interest
-		
+        kwargs
+        ----------
+        
+        save_path : Path to which output should be saved - must include trailing slash
+        title : Plot title
+        sharec : bool to represent whether the plots should share a colorbar or tuple of min,max values
+        save : bool to determine whether plot should be saved
+        cmap : colormap - default 'gist_eart_r'
+        s : int size of points - default 100
+        top_to_bottom : bool to orient the subplots vertically rather than horizontally
+        hide_title : bool to not have a title over the whole figure
+        figsize : as in matplotlib
+        tooltips: bool include labels of on scroll over the points
+        ax : axes object onto which the map should plot
+        latlon : bool plot against lat and lon rather than euclidian distances - default True
+        basemap : bool include underlaying county boundaries
+        shpfile : str shapefile for the watersheds in the area
+        POT : list times of peak over threshold incidents
+        locs : list GAGE_IDs of the watersheds of interest
+        colors: list colors to use for watersheds of interest
+
         **basemap_kwargs
-		
+
         Returns
         -------
         fig : map of rain intensity at each location
@@ -103,8 +104,13 @@ class Event:
         df = self.df
         x, y = self.__get_latlon(latlon)
         cols = self.data_cols
-        map_kwargs = {'cmap':cmap, 's':100}
-        if len(cols) == 1:
+        map_kwargs = {'cmap':cmap, 's':s}
+        if ncols or nrows:
+            try: 
+                nrows = int(np.ceil(len(cols)/float(ncols)))
+            except:
+                ncols = int(np.ceil(len(cols)/float(nrows)))
+        elif len(cols) == 1:
             ncols = 1
             nrows = 1
         else:
@@ -112,7 +118,11 @@ class Event:
             nrows = int(np.ceil(len(cols)/float(ncols)))
         if top_to_bottom:
             nrows, ncols = ncols, nrows
-        if figsize:
+        if cartopy:
+            fig = plt.figure(figsize=figsize)
+            axes = np.array(range(len(cols)))
+            axes_list = []
+        elif figsize:
             fig, axes = plt.subplots(nrows, ncols, figsize=figsize, sharex='row', sharey='row')
         elif ax is None:
             fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*8, 5*nrows), sharex='row', sharey='row')
@@ -128,36 +138,35 @@ class Event:
             fig.suptitle(title, fontsize=18)
             fig.subplots_adjust(top=.85, hspace=.3, wspace=0.1)
         return_ax = False
-        if ax is not None:
+        if not cartopy and ax is not None:
             axes = ax
             return_ax = True
         try:
             axes = axes.reshape(-1)
         except:
-            axes = [axes]
+            axes = list(axes)
         for col, ax in zip(cols, axes):
             if basemap:
                 a = self.__include_basemap(ax, shpfile, POT, locs, colors, **basemap_kwargs)
                 map_kwargs.update({'latlon': latlon})
+            if cartopy:
+                a = self.__include_cartopy(ax, nrows, ncols, **basemap_kwargs)
+                axes_list.append(a)
             else:
                 a = ax
             scat = a.scatter(x=x.values, y=y.values, c=df[col].values, **map_kwargs)
-            ax.set_title(col)
+            a.set_title(col)
             if return_ax:
                 return scat
             if not sharec:
-                fig.colorbar(scat, ax=ax)
-        if sharec:
-            fig.colorbar(scat, ax=list(axes))
+                fig.colorbar(scat, ax=a)
+        if sharec and not cartopy:
+            fig.colorbar(scat, ax=list(axes), fraction=.05)
+        elif sharec and cartopy:
+            fig.colorbar(scat, ax=axes_list, fraction=.05)
         if save:
             plt.savefig(save_path+title+'.png')
-        if tooltips:
-            import mpld3
-            mpld3.plugins.clear(fig)
-            labels = ['Gage {i}'.format(i=i) for i in df.columns]
-            tooltip = mpld3.plugins.PointLabelTooltip(scat, labels=labels)
-            mpld3.plugins.connect(fig, tooltip)
-            mpld3.display(fig)
+
 
     def movie(self, vmin=None, vmax=None, cmap='gist_earth_r', s=100, latlon=True, basemap=False,
               shpfile=None, POT=[], locs=[], colors=[], **basemap_kwargs):
@@ -166,21 +175,21 @@ class Event:
 
         Parameters
         ----------
-	    self : Event object with at least one data column
+        self : Event object with at least one data column
 
         kwargs
-		----------
-		vmin : min value for colormap
-		vmax : max value for colormap
-		cmap : colormap - default 'gist_eart_r'
-		s : int size of points - default 100
-		latlon : bool plot against lat and lon rather than euclidian distances - default True
-		basemap : bool include underlaying county boundaries
-		shpfile : str shapefile for the watersheds in the area
-		POT : list times of peak over threshold incidents
-		locs : list GAGE_IDs of the watersheds of interest
-		colors: list colors to use for watersheds of interest
-		
+        ----------
+        vmin : min value for colormap
+        vmax : max value for colormap
+        cmap : colormap - default 'gist_eart_r'
+        s : int size of points - default 100
+        latlon : bool plot against lat and lon rather than euclidian distances - default True
+        basemap : bool include underlaying county boundaries
+        shpfile : str shapefile for the watersheds in the area
+        POT : list times of peak over threshold incidents
+        locs : list GAGE_IDs of the watersheds of interest
+        colors: list colors to use for watersheds of interest
+
         **basemap_kwargs
 
         Returns
@@ -223,10 +232,10 @@ class Event:
         self : Event object with at least one data column
 
         kwargs
-		----------
-		latlon : bool detrend with respect to lat and lon rather than euclidian distances - default True
-		plot : bool plot the detrending - default False
-		drop_zeros : bool drop all the zeros from the detrended dataset - default True
+        ----------
+        latlon : bool detrend with respect to lat and lon rather than euclidian distances - default True
+        plot : bool plot the detrending - default False
+        drop_zeros : bool drop all the zeros from the detrended dataset - default True
 
         Returns
         -------
@@ -385,7 +394,7 @@ class Event:
         fig : plot of output from r-krige function
         """
 
-		if res:
+        if res:
             if not hasattr(self, 'res'):
                 self.detrend() 
             df = self.res
@@ -473,6 +482,27 @@ class Event:
         combined_SVG = a
         self.combined_SVG
 
+    def __include_cartopy(self, n, nrows, ncols, shpfile='../../data/CHARLOTTE/Maps/county.shp', 
+                          extent=None, proj=None):
+        import cartopy.crs as ccrs
+        import cartopy.io.shapereader as shpreader
+        import cartopy.feature as cfeature
+        
+        if proj is None:
+            proj=ccrs.PlateCarree()
+        if extent is None:
+            extent = [self.ll.lon.min()-.01, self.ll.lon.max()+.01, 
+                      self.ll.lat.min()-.01, self.ll.lat.max()+.01]
+        ax = plt.subplot(nrows, ncols, n+1, projection=proj)
+        #ax = plt.axes(projection=proj)
+        #TODO: add other geometries (basins and whatever) maybe using dicts?
+
+        counties = list(shpreader.Reader(shpfile).geometries())
+        ax.add_geometries(counties, proj, edgecolor='gray', facecolor='None')
+        ax.set_extent(extent, proj)
+
+        return ax
+
     def __include_basemap(self, ax, shpfile, POT, locs, colors, resolution='i', projection='tmerc', **basemap_kwargs):
         from mpl_toolkits.basemap import Basemap
         from matplotlib.patches import Polygon
@@ -492,7 +522,12 @@ class Event:
                 basemap_kwargs.update({'lon_0': (self.ll.lon.min()+self.ll.lon.max())/2.})
 
         map = Basemap(ax=ax, resolution=resolution, projection=projection, **basemap_kwargs)
-
+        
+        parallels = np.arange(basemap_kwargs['llcrnrlat'], basemap_kwargs['urcrnrlat'],.1)
+        map.drawparallels(parallels,labels=[True,False,False,False])
+        
+        meridians = np.arange(basemap_kwargs['llcrnrlon'], basemap_kwargs['urcrnrlon'],.1)
+        map.drawmeridians(meridians,labels=[False,False,False,True])
         map.drawcounties()
 
         if shpfile is not None:
